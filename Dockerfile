@@ -2,7 +2,9 @@ FROM rocker/r-ver:4.6.1
 
 # System libraries needed by the R packages at build/run time
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     libcurl4-openssl-dev \
+    libuv1-dev \
     libssl-dev \
     libxml2-dev \
     libsodium-dev \
