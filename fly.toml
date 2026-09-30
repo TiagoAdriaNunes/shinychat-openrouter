@@ -1,4 +1,4 @@
-app = "shinychat-openrouter"
+app = "add-app-name-for-your-app"
 primary_region = "gru"
 
 [build]
