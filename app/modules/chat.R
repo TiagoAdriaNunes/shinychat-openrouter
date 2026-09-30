@@ -5,14 +5,20 @@ box::use(
 )
 
 box::use(
-  .. / logic / config[openrouter_model, system_prompt],
+  .. / logic / config[greeting, openrouter_model, system_prompt],
 )
 
 #' @export
 ui <- function(id) {
   ns <- NS(id)
 
-  chat_ui(ns("chat"), drawer = FALSE, show_history = FALSE)
+  chat_ui(
+    ns("chat"),
+    greeting = greeting,
+    enable_cancel = TRUE,
+    drawer = FALSE,
+    show_history = FALSE
+  )
 }
 
 # Needs OPENROUTER_API_KEY in the environment (e.g. in ~/.Renviron).
