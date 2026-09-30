@@ -7,4 +7,7 @@ openrouter_model <- "stealth/space-bunny-alpha"
 system_prompt <- "You are a helpful assistant."
 
 #' @export
+greeting <- "**Hello!** How can I help you today?"
+
+#' @export
 app_title <- "shinychat + OpenRouter"
