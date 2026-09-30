@@ -1,21 +1,23 @@
 box::use(
-  bslib[page_fillable],
+  logger[log_info],
 )
 
 box::use(
-  . / logic / config[app_title],
   . / modules / chat,
 )
 
 #' @export
 ui <- function() {
-  page_fillable(
-    title = app_title,
-    chat$ui("chat")
-  )
+  chat$ui("chat")
 }
 
 #' @export
 server <- function(input, output, session) {
+  session_id <- substr(session$token, 1, 8)
+  log_info("Session {session_id} started")
+  session$onSessionEnded(function() {
+    log_info("Session {session_id} ended")
+  })
+
   chat$server("chat")
 }

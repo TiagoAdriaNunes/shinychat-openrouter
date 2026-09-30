@@ -4,11 +4,22 @@
 options(box.path = getwd())
 
 box::use(
+  logger[log_info, log_threshold],
   shiny[shinyApp],
 )
 
 box::use(
+  app / logic / checks[check_api_key, check_model],
+  app / logic / config[openrouter_model],
   app / main,
 )
+
+# Set LOG_LEVEL (e.g. DEBUG, INFO, WARN, ERROR) in the environment to change verbosity
+log_threshold(Sys.getenv("LOG_LEVEL", "INFO"))
+log_info("Starting shinychat-openrouter app")
+
+# Fail fast with a clear message instead of an error inside the first chat session
+check_model(openrouter_model)
+check_api_key()
 
 shinyApp(main$ui(), main$server)
