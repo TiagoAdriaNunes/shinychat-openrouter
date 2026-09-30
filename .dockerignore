@@ -1,0 +1,15 @@
+.git
+.gitignore
+.Renviron
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+renv/library
+renv/staging
+renv/local
+renv/cellar
+CLAUDE.md
+README.md
+Dockerfile
+fly.toml
