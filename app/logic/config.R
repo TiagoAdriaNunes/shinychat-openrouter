@@ -1,24 +1,43 @@
-# Default model: a router that picks a random free model per request. Users can
-# switch to any other free model from the dropdown below the chat.
-#' @export
-openrouter_model <- "openrouter/free"
+box::use(
+  config[get_config = get],
+)
 
-# Public model catalogue (no API key needed); free models have zero prompt and completion pricing.
-#' @export
-models_url <- "https://openrouter.ai/api/v1/models"
-
-# How long the fetched model list is reused before asking OpenRouter again.
-#' @export
-models_cache_seconds <- 3600
+# Settings live in config.yml at the project root; R_CONFIG_ACTIVE picks the section (default: "default").
+# Resolved relative to this file so it works from any working directory (e.g. tests).
+settings <- get_config(file = box::file("..", "..", "config.yml"))
 
 #' @export
-system_prompt <- "You are a helpful assistant."
+app_title <- settings$app$title
 
 #' @export
-disclaimer <- "This is a personal demo project. Please don't share sensitive or personal information."
+greeting <- settings$app$greeting
 
 #' @export
-greeting <-"**Hello!** How can I help you today?"
+placeholder <- settings$app$placeholder
 
 #' @export
-app_title <- "shinychat + OpenRouter"
+disclaimer <- settings$app$disclaimer
+
+#' @export
+system_prompt <- settings$chat$system_prompt
+
+#' @export
+openrouter_model <- settings$openrouter$default_model
+
+#' @export
+openrouter_model_label <- settings$openrouter$default_model_label
+
+#' @export
+models_url <- settings$openrouter$models_url
+
+#' @export
+models_page_url <- settings$openrouter$models_page_url
+
+#' @export
+models_cache_seconds <- settings$openrouter$models_cache_seconds
+
+#' @export
+request_timeout_seconds <- settings$openrouter$request_timeout_seconds
+
+#' @export
+theme_settings <- settings$theme

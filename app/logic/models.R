@@ -3,10 +3,13 @@ box::use(
   httr2[req_perform, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
+  stats[setNames],
 )
 
 box::use(
-  . / config[models_cache_seconds, models_url, openrouter_model],
+  . / config[
+    models_cache_seconds, models_url, openrouter_model, openrouter_model_label, request_timeout_seconds,
+  ],
 )
 
 is_free <- function(model) {
@@ -22,7 +25,7 @@ is_text_only <- function(model) {
 #' @export
 fetch_free_models <- function() {
   models <- request(models_url) |>
-    req_timeout(10) |>
+    req_timeout(request_timeout_seconds) |>
     req_perform() |>
     resp_body_json()
 
@@ -52,6 +55,6 @@ cached_fetch <- memoise(fetch_free_models, cache = cache_mem(max_age = models_ca
 free_models <- function(fetch = cached_fetch) {
   tryCatch(fetch(), error = function(e) {
     log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
-    c("Free Models Router" = openrouter_model)
+    setNames(openrouter_model, openrouter_model_label)
   })
 }
