@@ -11,7 +11,7 @@ box::use(
 
 box::use(
   .. / logic / config[
-    app_title, disclaimer, greeting, models_page_url, openrouter_model, openrouter_model_label,
+    app_title, disclaimer, fallback_model, fallback_model_label, greeting, models_page_url,
     placeholder, show_response_stats, system_prompt,
   ],
   .. / logic / client[format_stats, new_client, response_stats],
@@ -44,12 +44,13 @@ ui <- function(id) {
         tags$div(class = "w-100 text-center text-body-secondary", textOutput(stats_output_id(id), inline = TRUE))
       },
       tags$label(`for` = model_input_id(id), class = "mb-0", "Model:"),
-      # Compact select sized to the footer text; the server fills in the free model list
+      # Compact select sized to the footer text; the server replaces this placeholder option with
+      # the free model list
       tags$select(
         id = model_input_id(id),
         class = "shiny-input-select form-select form-select-sm w-auto py-0",
         style = "font-size: inherit;",
-        tags$option(value = openrouter_model, selected = NA, openrouter_model_label)
+        tags$option(value = fallback_model, selected = NA, fallback_model_label)
       ),
       tags$span(
         "via ",
@@ -71,7 +72,9 @@ ui <- function(id) {
 server <- function(id, models = free_models(), session = getDefaultReactiveDomain()) {
   input <- session$input
   output <- session$output
-  updateSelectInput(session, model_input_id(id), choices = models, selected = openrouter_model)
+  # Start with the first model: the most intelligent one (or the fallback if the list couldn't be fetched)
+  initial_model <- unname(models[[1]])
+  updateSelectInput(session, model_input_id(id), choices = models, selected = initial_model)
 
   stats <- reactiveVal(NULL)
   output[[stats_output_id(id)]] <- renderText({
@@ -84,10 +87,10 @@ server <- function(id, models = free_models(), session = getDefaultReactiveDomai
     new_client(model, system_prompt = system_prompt, label = if (test_string(label, min.chars = 1)) label else model)
   }
 
-  log_info("Chat client created with model {openrouter_model}")
-  client <- client_for(openrouter_model)
+  log_info("Chat client created with model {initial_model}")
+  client <- client_for(initial_model)
   chat <- chat_server(id, client, history = FALSE)
-  current_model <- reactiveVal(openrouter_model)
+  current_model <- reactiveVal(initial_model)
 
   # Time each response from shinychat's status ("streaming" -> "idle") and read its tokens from the
   # client that produced it (a model switch during a response is applied after it finishes)
@@ -99,6 +102,7 @@ server <- function(id, models = free_models(), session = getDefaultReactiveDomai
       } else if (!test_null(started)) {
         stats(response_stats(
           model = started$client$label,
+          model_id = started$client$get_model(),
           seconds = as.numeric(difftime(Sys.time(), started$time, units = "secs")),
           turn = started$client$last_turn(),
           previous_turn = started$turn

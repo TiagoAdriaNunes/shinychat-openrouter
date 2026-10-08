@@ -5,7 +5,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 ## Features
 
 - Streaming chat UI with a stop button, greeting and light/dark mode (Bootstrap 5 via `bslib`).
-- Model picker below the chat listing OpenRouter's [free models](https://openrouter.ai/collections/free-models), fetched live (cached for an hour) and ordered by Artificial Analysis intelligence index, most intelligent first. Defaults to the `openrouter/free` router; switching keeps the conversation.
+- Model picker below the chat listing OpenRouter's [free models](https://openrouter.ai/collections/free-models), fetched live (cached for an hour) and ordered by Artificial Analysis intelligence index, most intelligent first. The chat starts with the top model; switching keeps the conversation. The `openrouter/free` router is used only if the list can't be fetched (it picks any free model at random, including non-chat ones).
 - Modular code using [`box`](https://klmr.me/box/) for imports (no `library()` calls).
 - Reproducible environment with `renv`.
 - Logging with `logger` and clear startup errors with `cli`/`rlang`.

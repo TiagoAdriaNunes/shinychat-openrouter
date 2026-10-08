@@ -10,7 +10,7 @@ box::use(
 
 box::use(
   app / logic / checks[check_api_key, check_model],
-  app / logic / config[openrouter_model],
+  app / logic / config[fallback_model],
   app / main,
 )
 
@@ -19,7 +19,7 @@ log_threshold(Sys.getenv("LOG_LEVEL", "INFO"))
 log_info("Starting shinychat-openrouter app")
 
 # Fail fast with a clear message instead of an error inside the first chat session
-check_model(openrouter_model)
+check_model(fallback_model)
 check_api_key()
 
 shinyApp(main$ui(), main$server)

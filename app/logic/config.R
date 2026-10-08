@@ -25,10 +25,10 @@ show_response_stats <- isTRUE(settings$app$show_response_stats)
 system_prompt <- settings$chat$system_prompt
 
 #' @export
-openrouter_model <- settings$openrouter$default_model
+fallback_model <- settings$openrouter$fallback_model
 
 #' @export
-openrouter_model_label <- settings$openrouter$default_model_label
+fallback_model_label <- settings$openrouter$fallback_model_label
 
 #' @export
 models_url <- settings$openrouter$models_url

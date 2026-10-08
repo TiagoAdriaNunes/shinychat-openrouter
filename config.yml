@@ -16,9 +16,10 @@ default:
     system_prompt: "You are a helpful assistant."
 
   openrouter:
-    # Router that picks a random free model per request; users can switch from the dropdown
-    default_model: "openrouter/free"
-    default_model_label: "Free Models Router"
+    # The chat starts with the most intelligent model in the list. This model is used only when the
+    # list can't be fetched: a router that picks a random free model per request.
+    fallback_model: "openrouter/free"
+    fallback_model_label: "Free Models Router"
     # Public model catalogue (no API key needed); free models have zero prompt and completion pricing
     models_url: "https://openrouter.ai/api/v1/models"
     models_page_url: "https://openrouter.ai/collections/free-models"
@@ -31,8 +32,10 @@ default:
       # 403: only available through agentic apps listed on https://openrouter.ai/apps
       - "thinkingmachines/inkling:free"
       - "thinkingmachines/inkling-small:free"
-      # Safety classifier (answers "safe"/"unsafe"), not a chat model
+      # Safety classifier (answers "User Safety: safe"), not a chat model
       - "nvidia/nemotron-3.5-content-safety:free"
+      # Router: picks any free model at random, including the ones excluded here
+      - "openrouter/free"
 
   # Shown in the chat instead of the raw error when a model request fails.
   # {model} is replaced with the model's name.
