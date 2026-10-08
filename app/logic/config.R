@@ -43,4 +43,7 @@ request_timeout_seconds <- settings$openrouter$request_timeout_seconds
 excluded_models <- as.character(unlist(settings$openrouter$excluded_models))
 
 #' @export
+error_messages <- settings$errors
+
+#' @export
 theme_settings <- settings$theme

@@ -32,6 +32,16 @@ default:
       # Safety classifier (answers "safe"/"unsafe"), not a chat model
       - "nvidia/nemotron-3.5-content-safety:free"
 
+  # Shown in the chat instead of the raw error when a model request fails.
+  # {model} is replaced with the model's name.
+  errors:
+    # HTTP 429: the free model (or its provider) is rate limited
+    rate_limited: "**{model} is not available right now** because it is receiving too many requests. Please select a different model from the dropdown below and send your message again."
+    # HTTP 403/404: the model can't be used from this app
+    unavailable: "**{model} is not available in this app.** Please select a different model from the dropdown below and send your message again."
+    # Anything else (provider down, timeout, dropped connection)
+    failed: "**{model} didn't respond.** Please try again, or select a different model from the dropdown below."
+
   # Any bslib theme variable can go here; see ?shinychat::page_chat_theme
   theme:
     version: 5
