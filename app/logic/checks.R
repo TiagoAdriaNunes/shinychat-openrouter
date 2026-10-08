@@ -27,7 +27,7 @@ check_model <- function(model, call = caller_env()) {
     cli_abort(
       c(
         "{.arg model} must be a single non-empty string, not {.obj_type_friendly {model}}.",
-        "i" = "Set it in {.file app/logic/config.R}, e.g. {.val openrouter/free}."
+        "i" = "Set {.field openrouter.fallback_model} in {.file config.yml}, e.g. {.val openrouter/free}."
       ),
       call = call
     )

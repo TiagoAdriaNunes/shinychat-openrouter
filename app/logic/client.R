@@ -1,11 +1,11 @@
 box::use(
-  checkmate[test_null, test_number],
+  checkmate[test_null, test_number, test_string],
   coro[async_generator, await_each, yield],
   ellmer[Chat, chat_openrouter],
   glue[glue, glue_data],
   logger[log_warn],
   R6[R6Class],
-  stringr[str_c, str_flatten],
+  stringr[fixed, str_c, str_flatten, str_remove, str_starts],
 )
 
 box::use(
@@ -77,16 +77,26 @@ new_client <- function(model, system_prompt, label = model) {
   client
 }
 
+# Model id without the ":free" variant suffix, for comparing requested and answering models
+base_model_id <- function(id) str_remove(id, ":free$")
+
 #' Stats for the response that just finished: `turn` is the client's last turn after the response,
 #' `previous_turn` its last turn before it. ellmer records a failed or stopped response as a partial
 #' turn (with no token counts), so a partial or unchanged turn counts as incomplete.
+#' `answered_by` is set when OpenRouter reports a different model than `model_id` (e.g. a router).
 #' @export
-response_stats <- function(model, seconds, turn, previous_turn) {
+response_stats <- function(model, model_id, seconds, turn, previous_turn) {
   ok <- !test_null(turn) && !identical(turn, previous_turn) && !inherits(turn, "ellmer::AssistantPartialTurn")
   stats <- list(model = model, ok = ok, seconds = seconds)
   if (ok) {
     stats$input_tokens <- turn@tokens[["input"]]
     stats$output_tokens <- turn@tokens[["output"]]
+    # OpenRouter's response names the model that answered; providers may append a version suffix
+    answered <- turn@json$model
+    if (test_string(answered, min.chars = 1) &&
+      !str_starts(base_model_id(answered), fixed(base_model_id(model_id)))) {
+      stats$answered_by <- answered
+    }
   }
   stats
 }
@@ -94,14 +104,16 @@ response_stats <- function(model, seconds, turn, previous_turn) {
 # Seconds with one decimal, e.g. 2.43 -> "2.4", 1 -> "1.0"
 format_seconds <- function(seconds) format(round(seconds, 1), nsmall = 1)
 
-#' One-line summary of a response's stats, e.g. "Gemma · 2.4 s · 25 in / 186 out tokens · 77 tokens/s".
+#' One-line summary of a response's stats, e.g. "Gemma · 2.4 s · 25 in / 186 out tokens · 77 tokens/s",
+#' or "Free Models Router → google/gemma-4-31b-it:free · ..." when a router picked the model.
 #' @export
 format_stats <- function(stats) {
   seconds <- format_seconds(stats$seconds)
   if (!stats$ok) {
     return(as.character(glue("{stats$model} · incomplete after {seconds} s")))
   }
-  parts <- c(stats$model, glue("{seconds} s"))
+  model <- if (test_null(stats$answered_by)) stats$model else glue("{stats$model} → {stats$answered_by}")
+  parts <- c(model, glue("{seconds} s"))
   if (test_number(stats$output_tokens)) {
     parts <- c(parts, glue("{stats$input_tokens} in / {stats$output_tokens} out tokens"))
     if (stats$seconds > 0) parts <- c(parts, glue("{round(stats$output_tokens / stats$seconds)} tokens/s"))

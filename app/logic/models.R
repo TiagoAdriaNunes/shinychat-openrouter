@@ -8,7 +8,7 @@ box::use(
 
 box::use(
   . / config[
-    excluded_models, models_cache_seconds, models_url, openrouter_model, openrouter_model_label,
+    excluded_models, fallback_model, fallback_model_label, models_cache_seconds, models_url,
     request_timeout_seconds,
   ],
 )
@@ -41,15 +41,12 @@ fetch_free_models <- function() {
     stop("No free text models in the response")
   }
 
-  # Most intelligent first; unscored models after, newest first
+  # Most intelligent first (the chat starts with the first one); unscored models after, newest first
   score <- map_dbl(free, intelligence)
   created <- map_dbl(free, \(m) if (is.numeric(m$created) && length(m$created) == 1) m$created else 0)
   ids <- set_names(map_chr(free, "id"), map_chr(free, "name"))
-  ids <- ids[order(-score, -created)]
   log_info("Fetched {length(ids)} free OpenRouter models")
-
-  # Keep the default first so it is the initial selection
-  c(ids[ids == openrouter_model], ids[ids != openrouter_model])
+  ids[order(-score, -created)]
 }
 
 # Shared by all sessions in this R process. memoise only stores returned values,
@@ -59,11 +56,11 @@ cached_fetch <- memoise(fetch_free_models, cache = cache_mem(max_age = models_ca
 #' Free text models on OpenRouter as a named character vector (name = label, value = id).
 #'
 #' Uses `fetch` (cached for `models_cache_seconds` by default); falls back to the
-#' default model if it fails.
+#' fallback model if it fails.
 #' @export
 free_models <- function(fetch = cached_fetch) {
   tryCatch(fetch(), error = function(e) {
     log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
-    set_names(openrouter_model, openrouter_model_label)
+    set_names(fallback_model, fallback_model_label)
   })
 }

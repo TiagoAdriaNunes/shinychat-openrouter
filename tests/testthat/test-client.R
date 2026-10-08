@@ -56,7 +56,9 @@ test_that("a rate-limited model streams the friendly message and its stats show 
   expect_equal(text, str_c("\n\n", expected(error_messages$rate_limited, "Gemma (free)")))
 
   # ellmer records the failed request as a partial turn
-  stats <- response_stats("Gemma (free)", seconds = 8, turn = client$last_turn(), previous_turn = NULL)
+  stats <- response_stats(
+    "Gemma (free)", "google/gemma:free", seconds = 8, turn = client$last_turn(), previous_turn = NULL
+  )
   expect_false(stats$ok)
   expect_equal(format_stats(stats), "Gemma (free) · incomplete after 8.0 s")
 })
@@ -70,17 +72,37 @@ test_that("response_stats() reads tokens from a new turn and flags an unchanged 
   old <- AssistantTurn(list(ContentText("Earlier")), tokens = c(input = 5, output = 7, cached_input = 0))
   new <- AssistantTurn(list(ContentText("Hi")), tokens = c(input = 25, output = 186, cached_input = 0))
 
-  ok <- response_stats("Gemma", seconds = 2.43, turn = new, previous_turn = old)
+  ok <- response_stats("Gemma", "google/gemma:free", seconds = 2.43, turn = new, previous_turn = old)
   expect_true(ok$ok)
   expect_equal(c(ok$input_tokens, ok$output_tokens), c(25, 186))
+  expect_null(ok$answered_by)
 
-  expect_false(response_stats("Gemma", seconds = 8, turn = old, previous_turn = old)$ok)
-  expect_false(response_stats("Gemma", seconds = 8, turn = NULL, previous_turn = NULL)$ok)
+  expect_false(response_stats("Gemma", "google/gemma:free", seconds = 8, turn = old, previous_turn = old)$ok)
+  expect_false(response_stats("Gemma", "google/gemma:free", seconds = 8, turn = NULL, previous_turn = NULL)$ok)
+})
+
+test_that("response_stats() names the model that answered when it differs from the one requested", {
+  answered <- function(model) {
+    AssistantTurn(list(ContentText("Hi")), json = list(model = model), tokens = c(input = 1, output = 2, cached_input = 0))
+  }
+
+  routed <- response_stats("Free Models Router", "openrouter/free", 1, answered("google/gemma-4-31b-it:free"), NULL)
+  expect_equal(routed$answered_by, "google/gemma-4-31b-it:free")
+
+  # Same model, reported without ":free" or with a version suffix: not shown
+  expect_null(response_stats("Gemma", "google/gemma:free", 1, answered("google/gemma"), NULL)$answered_by)
+  expect_null(response_stats("Gemma", "google/gemma:free", 1, answered("google/gemma-20260402"), NULL)$answered_by)
 })
 
 test_that("format_stats() summarises a response on one line", {
   ok <- list(model = "Gemma", ok = TRUE, seconds = 2.43, input_tokens = 25, output_tokens = 186)
   expect_equal(format_stats(ok), "Gemma · 2.4 s · 25 in / 186 out tokens · 77 tokens/s")
+
+  routed <- modifyList(ok, list(model = "Free Models Router", answered_by = "google/gemma-4-31b-it:free"))
+  expect_equal(
+    format_stats(routed),
+    "Free Models Router → google/gemma-4-31b-it:free · 2.4 s · 25 in / 186 out tokens · 77 tokens/s"
+  )
 
   expect_equal(format_stats(list(model = "Gemma", ok = TRUE, seconds = 1)), "Gemma · 1.0 s")
   expect_equal(format_stats(list(model = "Gemma", ok = FALSE, seconds = 8.06)), "Gemma · incomplete after 8.1 s")

@@ -14,6 +14,7 @@ fake_model <- function(id, name, prompt = "0", completion = "0", output = list("
 fake_catalogue <- list(data = list(
   fake_model("d/delta:free", "Delta (free)", created = 100),
   fake_model("a/alpha:free", "Alpha (free)", intelligence = 10L),
+  # The router is in excluded_models too (it can pick excluded models)
   fake_model("openrouter/free", "Free Models Router"),
   fake_model("b/beta:free", "Beta (free)", intelligence = 30.5),
   fake_model("c/gamma:free", "Gamma (free)", created = 200),
@@ -23,9 +24,8 @@ fake_catalogue <- list(data = list(
   fake_model("thinkingmachines/inkling:free", "Inkling (free)", intelligence = 50)
 ))
 
-# Default first, then by intelligence (highest first), then unscored by newest
+# By intelligence (highest first), then unscored by newest
 fake_models <- c(
-  "Free Models Router" = "openrouter/free",
   "Beta (free)" = "b/beta:free",
   "Alpha (free)" = "a/alpha:free",
   "Gamma (free)" = "c/gamma:free",
