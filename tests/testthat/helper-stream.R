@@ -5,8 +5,17 @@ collect_stream <- function(stream, timeout = 10) {
   failure <- NULL
   drain <- coro::async(function() {
     for (chunk in coro::await_each(stream)) {
-      # Keep text only; reasoning models also stream thinking chunks
-      out <<- c(out, if (is.character(chunk)) chunk else if (inherits(chunk, "ellmer::ContentText")) chunk@text)
+      # Keep text; skip NULL (ignored by shinychat) and thinking chunks from reasoning models;
+      # fail on anything else (e.g. a stray TRUE would be shown at the end of the reply)
+      if (is.null(chunk)) {
+        next
+      } else if (is.character(chunk)) {
+        out <<- c(out, chunk)
+      } else if (inherits(chunk, "ellmer::ContentText")) {
+        out <<- c(out, chunk@text)
+      } else if (!inherits(chunk, "ellmer::ContentThinking")) {
+        stop("Unexpected stream chunk of class ", paste(class(chunk), collapse = "/"))
+      }
     }
   })
   promises::then(
