@@ -1,0 +1,33 @@
+# App settings, read by app/logic/config.R with the `config` package.
+# Add another top-level section (e.g. `production:`) to override values and
+# select it with the R_CONFIG_ACTIVE environment variable.
+# Secrets (OPENROUTER_API_KEY) and LOG_LEVEL stay in environment variables.
+
+default:
+  app:
+    title: "shinychat + OpenRouter"
+    greeting: "**Hello!** How can I help you today?"
+    placeholder: "Ask me anything..."
+    disclaimer: "This is a personal demo project. Please don't share sensitive or personal information."
+
+  chat:
+    system_prompt: "You are a helpful assistant."
+
+  openrouter:
+    # Router that picks a random free model per request; users can switch from the dropdown
+    default_model: "openrouter/free"
+    default_model_label: "Free Models Router"
+    # Public model catalogue (no API key needed); free models have zero prompt and completion pricing
+    models_url: "https://openrouter.ai/api/v1/models"
+    models_page_url: "https://openrouter.ai/collections/free-models"
+    # How long the fetched model list is reused before asking OpenRouter again
+    models_cache_seconds: 3600
+    request_timeout_seconds: 10
+
+  # Any bslib theme variable can go here; see ?shinychat::page_chat_theme
+  theme:
+    version: 5
+    primary: "#5b5fc7"
+    border-radius: "0.75rem"
+    shiny-chat-user-message-border-radius: "1.25rem"
+    shiny-chat-user-message-padding: "0.625rem 1rem"

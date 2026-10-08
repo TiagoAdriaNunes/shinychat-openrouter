@@ -9,7 +9,10 @@ box::use(
 )
 
 box::use(
-  .. / logic / config[app_title, disclaimer, greeting, openrouter_model, system_prompt],
+  .. / logic / config[
+    app_title, disclaimer, greeting, models_page_url, openrouter_model, openrouter_model_label,
+    placeholder, system_prompt,
+  ],
   .. / logic / models[free_models],
   .. / logic / theme[chat_theme],
 )
@@ -29,7 +32,7 @@ ui <- function(id) {
     icon = icon("robot"),
     id = id,
     greeting = greeting,
-    placeholder = "Ask me anything...",
+    placeholder = placeholder,
     enable_cancel = TRUE,
     footer = tags$div(
       class = "d-flex flex-wrap align-items-center justify-content-center gap-2",
@@ -39,11 +42,11 @@ ui <- function(id) {
         id = model_input_id(id),
         class = "shiny-input-select form-select form-select-sm w-auto py-0",
         style = "font-size: inherit;",
-        tags$option(value = openrouter_model, selected = NA, "Free Models Router")
+        tags$option(value = openrouter_model, selected = NA, openrouter_model_label)
       ),
       tags$span(
         "via ",
-        external_link("https://openrouter.ai/collections/free-models", "OpenRouter"),
+        external_link(models_page_url, "OpenRouter"),
         " · ",
         disclaimer
       )

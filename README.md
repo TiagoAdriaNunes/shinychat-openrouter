@@ -50,11 +50,24 @@ Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked
 
 ## Configuration
 
-| What | Where |
+All app settings live in [`config.yml`](config.yml), read with the [`config`](https://rstudio.github.io/config/) package:
+
+| What | Section in `config.yml` |
 | --- | --- |
-| Model, system prompt, greeting, disclaimer, title | `app/logic/config.R` |
-| Colors and chat styling | `app/logic/theme.R` |
-| Log verbosity | `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARN`, `ERROR`; default `INFO`) |
+| Title, greeting, input placeholder, disclaimer | `app` |
+| System prompt | `chat` |
+| Default model, model list URL, cache duration, request timeout | `openrouter` |
+| Colors and chat styling (any bslib theme variable) | `theme` |
+
+To override values per environment, add a section (e.g. `production:`) with only the keys that differ and set `R_CONFIG_ACTIVE=production`.
+
+Environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | OpenRouter API key (required) |
+| `LOG_LEVEL` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` (default `INFO`) |
+| `R_CONFIG_ACTIVE` | Which `config.yml` section to use (default `default`) |
 
 Message content is never logged.
 
@@ -62,13 +75,14 @@ Message content is never logged.
 
 ```text
 app.R                  Entry point: sets box.path, runs startup checks, starts the app
+config.yml             All app settings (text, model, caching, theme)
 app/
   main.R               Page UI and top-level server
   modules/chat.R       Chat module (page_chat + chat_openrouter + chat_server)
   logic/
-    config.R           Default model, models URL, system prompt, greeting, title
+    config.R           Reads config.yml and exports the settings
     models.R           Fetches and caches the free model list
-    theme.R            page_chat_theme() (Bootstrap 5)
+    theme.R            page_chat_theme() built from the config.yml theme section
     checks.R           Startup validation (cli::cli_abort)
 tests/                 testthat suite (run with Rscript tests/testthat.R)
 .github/workflows/     CI: runs the tests on every push and pull request

@@ -20,7 +20,7 @@ COPY renv/activate.R renv/activate.R
 COPY renv/settings.json renv/settings.json
 RUN R -e "renv::restore(prompt = FALSE)"
 
-COPY app.R ./
+COPY app.R config.yml ./
 COPY app ./app
 
 # OPENROUTER_API_KEY is provided at runtime (fly secrets set), never baked into the image
