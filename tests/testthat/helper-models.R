@@ -13,7 +13,9 @@ fake_catalogue <- list(data = list(
   fake_model("openrouter/free", "Free Models Router"),
   fake_model("a/alpha:free", "Alpha (free)"),
   fake_model("p/paid", "Paid", prompt = "0.000001", completion = "0.000002"),
-  fake_model("m/music", "Music (free)", output = list("text", "audio"))
+  fake_model("m/music", "Music (free)", output = list("text", "audio")),
+  # Listed in excluded_models in config.yml
+  fake_model("thinkingmachines/inkling:free", "Inkling (free)")
 ))
 
 fake_models <- c(
