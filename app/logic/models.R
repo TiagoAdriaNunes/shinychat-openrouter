@@ -3,7 +3,7 @@ box::use(
   httr2[req_perform, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
-  purrr[keep, map_chr, set_names],
+  purrr[keep, map_chr, map_dbl, set_names],
 )
 
 box::use(
@@ -22,6 +22,12 @@ is_text_only <- function(model) {
   identical(unlist(model$architecture$output_modalities), "text")
 }
 
+# Artificial Analysis intelligence index, or NA when missing or malformed (many free models have none)
+intelligence <- function(model) {
+  score <- model$benchmarks$artificial_analysis$intelligence_index
+  if (is.numeric(score) && length(score) == 1) score else NA_real_
+}
+
 #' Fetch free text models from OpenRouter, uncached. Errors if the request fails or none are found.
 #' @export
 fetch_free_models <- function() {
@@ -35,8 +41,11 @@ fetch_free_models <- function() {
     stop("No free text models in the response")
   }
 
+  # Most intelligent first; unscored models after, newest first
+  score <- map_dbl(free, intelligence)
+  created <- map_dbl(free, \(m) if (is.numeric(m$created) && length(m$created) == 1) m$created else 0)
   ids <- set_names(map_chr(free, "id"), map_chr(free, "name"))
-  ids <- ids[order(names(ids))]
+  ids <- ids[order(-score, -created)]
   log_info("Fetched {length(ids)} free OpenRouter models")
 
   # Keep the default first so it is the initial selection

@@ -9,7 +9,7 @@ box::use(
   app / logic / models[fetch_free_models, free_models],
 )
 
-test_that("free_models() keeps free text-only, non-excluded models, default first, then by name", {
+test_that("free_models() keeps free text-only, non-excluded models, default first, then by intelligence", {
   local_mocked_responses(function(req) response_json(body = fake_catalogue))
 
   expect_equal(free_models(fetch = fetch_free_models), fake_models)
