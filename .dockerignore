@@ -13,3 +13,5 @@ CLAUDE.md
 README.md
 Dockerfile
 fly.toml
+tests
+.github

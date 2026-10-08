@@ -5,7 +5,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 ## Features
 
 - Streaming chat UI with a stop button, greeting and light/dark mode (Bootstrap 5 via `bslib`).
-- Free model out of the box: `stealth/space-bunny-alpha` (swap for `openrouter/free` or any other model in one line).
+- Model picker below the chat listing OpenRouter's [free models](https://openrouter.ai/collections/free-models), fetched live (cached for an hour). Defaults to the `openrouter/free` router; switching keeps the conversation.
 - Modular code using [`box`](https://klmr.me/box/) for imports (no `library()` calls).
 - Reproducible environment with `renv`.
 - Logging with `logger` and clear startup errors with `cli`/`rlang`.
@@ -40,6 +40,14 @@ shiny::runApp()
 
 The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid.
 
+## Test
+
+```sh
+Rscript tests/testthat.R
+```
+
+Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()`, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
+
 ## Configuration
 
 | What | Where |
@@ -58,9 +66,12 @@ app/
   main.R               Page UI and top-level server
   modules/chat.R       Chat module (page_chat + chat_openrouter + chat_server)
   logic/
-    config.R           Model, system prompt, greeting, title
+    config.R           Default model, models URL, system prompt, greeting, title
+    models.R           Fetches and caches the free model list
     theme.R            page_chat_theme() (Bootstrap 5)
     checks.R           Startup validation (cli::cli_abort)
+tests/                 testthat suite (run with Rscript tests/testthat.R)
+.github/workflows/     CI: runs the tests on every push and pull request
 renv.lock              Locked package versions
 Dockerfile             Container image for deployment
 fly.toml               Fly.io configuration
