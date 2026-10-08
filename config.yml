@@ -9,11 +9,25 @@ default:
     greeting: "**Hello!** How can I help you today?"
     placeholder: "Ask me anything..."
     disclaimer: "This is a personal demo project. Please don't share sensitive or personal information."
-    # Line under the input with the last response's time, time to first token and token counts
+    # Line under the input with the last response's model, time and token counts
     show_response_stats: true
 
   chat:
-    system_prompt: "You are a helpful assistant."
+    # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
+    # footnotes, blockquotes, highlighted code blocks with a copy button). It does not render
+    # LaTeX math, Mermaid diagrams or raw HTML, so the prompt steers models away from those.
+    system_prompt: |
+      You are a helpful assistant in a chat window that renders GitHub-flavored Markdown.
+      Choose the format that fits each part of your answer:
+      - Short or conversational answers: plain sentences, no headings or lists.
+      - Longer answers with several parts: `##` and `###` headings (never `#`).
+      - Steps or anything in order: numbered lists.
+      - Options, features or key points: bullet lists, nested at most one level.
+      - Comparisons across several attributes: a Markdown table with a header row.
+      - Checklists: task lists (`- [ ] item`).
+      - Code, commands, file contents or data: fenced code blocks with a language tag (for example ```r, ```bash, ```json). Names of functions, files and settings in text: `inline code`.
+      - Key terms and conclusions: **bold**, used sparingly. Quotations: `>` blockquotes.
+      The chat cannot display LaTeX math, Mermaid or other diagrams, images or raw HTML. Write formulas as plain text or in a code block, and describe diagrams with words, lists or tables.
 
   openrouter:
     # The chat starts with the most intelligent model in the list. This model is used only when the
