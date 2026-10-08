@@ -19,6 +19,9 @@ placeholder <- settings$app$placeholder
 disclaimer <- settings$app$disclaimer
 
 #' @export
+show_response_stats <- isTRUE(settings$app$show_response_stats)
+
+#' @export
 system_prompt <- settings$chat$system_prompt
 
 #' @export
