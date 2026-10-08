@@ -19,6 +19,9 @@ placeholder <- settings$app$placeholder
 disclaimer <- settings$app$disclaimer
 
 #' @export
+source_url <- settings$app$source_url
+
+#' @export
 show_response_stats <- isTRUE(settings$app$show_response_stats)
 
 #' @export

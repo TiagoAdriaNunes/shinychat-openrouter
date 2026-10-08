@@ -9,6 +9,8 @@ default:
     greeting: "**Hello!** How can I help you today?"
     placeholder: "Ask me anything..."
     disclaimer: "This is a personal demo project. Please don't share sensitive or personal information."
+    # Source code link (GitHub icon in the top bar)
+    source_url: "https://github.com/TiagoAdriaNunes/shinychat-openrouter/"
     # Line under the input with the last response's model, time and token counts
     show_response_stats: true
 
