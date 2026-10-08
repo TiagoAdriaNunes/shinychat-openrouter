@@ -1,4 +1,5 @@
 box::use(
+  bslib[input_dark_mode, toolbar],
   checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
   shiny[
@@ -12,7 +13,7 @@ box::use(
 box::use(
   .. / logic / config[
     app_title, disclaimer, fallback_model, fallback_model_label, greeting, models_page_url,
-    placeholder, show_response_stats, system_prompt,
+    placeholder, show_response_stats, source_url, system_prompt,
   ],
   .. / logic / client[format_stats, new_client, response_stats],
   .. / logic / models[free_models],
@@ -37,6 +38,8 @@ ui <- function(id) {
     greeting = greeting,
     placeholder = placeholder,
     enable_cancel = TRUE,
+    # No file uploads for now (also hides the "+" button in the input)
+    allow_attachments = FALSE,
     footer = tags$div(
       class = "d-flex flex-wrap align-items-center justify-content-center gap-2",
       # Last response's timings and tokens, on its own row (filled in by the server)
@@ -58,6 +61,17 @@ ui <- function(id) {
         " · ",
         disclaimer
       )
+    ),
+    # Top bar: link to the source code next to shinychat's default dark mode toggle
+    toolbar_global = toolbar(
+      external_link(
+        source_url,
+        class = "btn btn-link nav-link px-1",
+        title = "Source code on GitHub",
+        `aria-label` = "Source code on GitHub",
+        icon("github")
+      ),
+      input_dark_mode()
     ),
     sidebar = FALSE,
     drawer = FALSE,

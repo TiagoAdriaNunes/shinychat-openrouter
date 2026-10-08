@@ -14,6 +14,8 @@ test_that("ui() renders the model dropdown with the default model", {
   expect_match(html, 'id="chat_model"', fixed = TRUE)
   expect_match(html, 'value="openrouter/free"', fixed = TRUE)
   expect_match(html, 'id="chat_stats"', fixed = TRUE)
+  expect_match(html, 'href="https://github.com/TiagoAdriaNunes/shinychat-openrouter/"', fixed = TRUE)
+  expect_match(html, "fa-github", fixed = TRUE)
 })
 
 test_that("server() starts with the first (most intelligent) model, switches to listed ones, ignores others", {
