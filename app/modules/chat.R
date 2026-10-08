@@ -1,11 +1,12 @@
 box::use(
-  checkmate[test_null],
+  checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
   shiny[
     getDefaultReactiveDomain, icon, observeEvent, reactive, reactiveVal, renderText, req, tags,
     textOutput, updateSelectInput,
   ],
   shinychat[chat_server, page_chat],
+  stringr[str_c],
 )
 
 box::use(
@@ -22,8 +23,8 @@ external_link <- function(href, ...) {
   tags$a(href = href, target = "_blank", rel = "noopener noreferrer", ...)
 }
 
-model_input_id <- function(id) paste0(id, "_model")
-stats_output_id <- function(id) paste0(id, "_stats")
+model_input_id <- function(id) str_c(id, "_model")
+stats_output_id <- function(id) str_c(id, "_stats")
 
 # page_chat() owns the whole page, so this module is not namespaced: the same
 # literal `id` is used for the UI and for chat_server().
@@ -80,7 +81,7 @@ server <- function(id, models = free_models(), session = getDefaultReactiveDomai
   # Failed requests become a chat message naming the model (see app/logic/client.R)
   client_for <- function(model) {
     label <- names(models)[models == model][1]
-    new_client(model, system_prompt = system_prompt, label = if (is.na(label) || !nzchar(label)) model else label)
+    new_client(model, system_prompt = system_prompt, label = if (test_string(label, min.chars = 1)) label else model)
   }
 
   log_info("Chat client created with model {openrouter_model}")

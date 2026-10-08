@@ -1,4 +1,5 @@
 box::use(
+  checkmate[test_string],
   testthat[expect_gt, expect_true, test_that],
 )
 
@@ -12,7 +13,7 @@ test_that("config.yml provides every text setting as a non-empty string", {
     "openrouter_model_label", "models_url", "models_page_url"
   )) {
     value <- config[[name]]
-    expect_true(is.character(value) && length(value) == 1 && nzchar(value), info = name)
+    expect_true(test_string(value, min.chars = 1), info = name)
   }
 })
 

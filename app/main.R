@@ -1,5 +1,6 @@
 box::use(
   logger[log_info],
+  stringr[str_sub],
 )
 
 box::use(
@@ -13,7 +14,7 @@ ui <- function() {
 
 #' @export
 server <- function(input, output, session) {
-  session_id <- substr(session$token, 1, 8)
+  session_id <- str_sub(session$token, 1, 8)
   log_info("Session {session_id} started")
   session$onSessionEnded(function() {
     log_info("Session {session_id} ended")

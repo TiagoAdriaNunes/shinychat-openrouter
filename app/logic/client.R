@@ -5,6 +5,7 @@ box::use(
   glue[glue, glue_data],
   logger[log_warn],
   R6[R6Class],
+  stringr[str_c, str_flatten],
 )
 
 box::use(
@@ -50,7 +51,7 @@ safe_stream <- async_generator(function(stream, model) {
   )
   if (!test_null(failed)) {
     log_warn("Model {model} failed: {conditionMessage(failed)}")
-    yield(paste0("\n\n", error_message(failed, model)))
+    yield(str_c("\n\n", error_message(failed, model)))
   }
   NULL
 })
@@ -105,5 +106,5 @@ format_stats <- function(stats) {
     parts <- c(parts, glue("{stats$input_tokens} in / {stats$output_tokens} out tokens"))
     if (stats$seconds > 0) parts <- c(parts, glue("{round(stats$output_tokens / stats$seconds)} tokens/s"))
   }
-  paste(parts, collapse = " · ")
+  str_flatten(parts, " · ")
 }

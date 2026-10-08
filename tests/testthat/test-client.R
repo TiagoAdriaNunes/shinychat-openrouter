@@ -4,6 +4,7 @@ box::use(
   httr2[local_mocked_responses, req_perform, request, response],
   promises[promise_resolve],
   rlang[error_cnd],
+  stringr[fixed, str_c, str_replace_all],
   testthat[expect_equal, expect_false, expect_null, expect_s3_class, expect_true, test_that],
   withr[local_envvar, local_options],
 )
@@ -19,7 +20,7 @@ http_error <- function(status) {
 }
 
 # Independent of glue: plain substitution of the {model} placeholder
-expected <- function(template, model) gsub("{model}", model, template, fixed = TRUE)
+expected <- function(template, model) str_replace_all(template, fixed("{model}"), model)
 
 # Stand-in for an ellmer response stream (httr2 can't mock streaming responses)
 fake_stream <- async_generator(function(chunks) {
@@ -52,7 +53,7 @@ test_that("a rate-limited model streams the friendly message and its stats show 
   expect_s3_class(client, "Chat")
 
   text <- collect_stream(client$stream_async("Hi", stream = "content"))
-  expect_equal(text, paste0("\n\n", expected(error_messages$rate_limited, "Gemma (free)")))
+  expect_equal(text, str_c("\n\n", expected(error_messages$rate_limited, "Gemma (free)")))
 
   # ellmer records the failed request as a partial turn
   stats <- response_stats("Gemma (free)", seconds = 8, turn = client$last_turn(), previous_turn = NULL)

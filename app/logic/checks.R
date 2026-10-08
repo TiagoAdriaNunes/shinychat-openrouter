@@ -1,12 +1,13 @@
 box::use(
+  checkmate[test_string],
   cli[cli_abort],
-  rlang[caller_env, is_string],
+  rlang[caller_env],
 )
 
 #' Abort early with an actionable message if the OpenRouter API key is missing.
 #' @export
 check_api_key <- function(env_var = "OPENROUTER_API_KEY", call = caller_env()) {
-  if (!nzchar(Sys.getenv(env_var))) {
+  if (!test_string(Sys.getenv(env_var), min.chars = 1)) {
     cli_abort(
       c(
         "Environment variable {.envvar {env_var}} is not set.",
@@ -22,7 +23,7 @@ check_api_key <- function(env_var = "OPENROUTER_API_KEY", call = caller_env()) {
 #' Abort if the model id is not a single non-empty string.
 #' @export
 check_model <- function(model, call = caller_env()) {
-  if (!is_string(model) || !nzchar(model)) {
+  if (!test_string(model, min.chars = 1)) {
     cli_abort(
       c(
         "{.arg model} must be a single non-empty string, not {.obj_type_friendly {model}}.",
