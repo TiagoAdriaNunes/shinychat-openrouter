@@ -3,7 +3,7 @@ box::use(
   httr2[req_perform, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
-  stats[setNames],
+  purrr[keep, map_chr, set_names],
 )
 
 box::use(
@@ -29,13 +29,12 @@ fetch_free_models <- function() {
     req_perform() |>
     resp_body_json()
 
-  free <- Filter(function(m) is_free(m) && is_text_only(m), models$data)
+  free <- keep(models$data, \(m) is_free(m) && is_text_only(m))
   if (length(free) == 0) {
     stop("No free text models in the response")
   }
 
-  ids <- vapply(free, function(m) m$id, character(1))
-  names(ids) <- vapply(free, function(m) m$name, character(1))
+  ids <- set_names(map_chr(free, "id"), map_chr(free, "name"))
   ids <- ids[order(names(ids))]
   log_info("Fetched {length(ids)} free OpenRouter models")
 
@@ -55,6 +54,6 @@ cached_fetch <- memoise(fetch_free_models, cache = cache_mem(max_age = models_ca
 free_models <- function(fetch = cached_fetch) {
   tryCatch(fetch(), error = function(e) {
     log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
-    setNames(openrouter_model, openrouter_model_label)
+    set_names(openrouter_model, openrouter_model_label)
   })
 }
