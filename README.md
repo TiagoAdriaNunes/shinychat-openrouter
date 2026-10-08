@@ -57,6 +57,7 @@ All app settings live in [`config.yml`](config.yml), read with the [`config`](ht
 | Title, greeting, input placeholder, disclaimer | `app` |
 | System prompt | `chat` |
 | Default model, model list URL, cache duration, request timeout, models hidden from the dropdown | `openrouter` |
+| Messages shown when a model is rate limited, unavailable or fails | `errors` |
 | Colors and chat styling (any bslib theme variable) | `theme` |
 
 To override values per environment, add a section (e.g. `production:`) with only the keys that differ and set `R_CONFIG_ACTIVE=production`.
@@ -82,6 +83,7 @@ app/
   logic/
     config.R           Reads config.yml and exports the settings
     models.R           Fetches and caches the free model list
+    client.R           OpenRouter client that shows a friendly message when a model fails
     theme.R            page_chat_theme() built from the config.yml theme section
     checks.R           Startup validation (cli::cli_abort)
 tests/                 testthat suite (run with Rscript tests/testthat.R)

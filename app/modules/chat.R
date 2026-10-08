@@ -1,5 +1,4 @@
 box::use(
-  ellmer[chat_openrouter],
   logger[log_error, log_info, log_warn],
   shiny[
     getDefaultReactiveDomain, icon, observeEvent, reactive, reactiveVal, req, tags,
@@ -13,6 +12,7 @@ box::use(
     app_title, disclaimer, greeting, models_page_url, openrouter_model, openrouter_model_label,
     placeholder, system_prompt,
   ],
+  .. / logic / client[new_client],
   .. / logic / models[free_models],
   .. / logic / theme[chat_theme],
 )
@@ -57,10 +57,6 @@ ui <- function(id) {
   )
 }
 
-new_client <- function(model) {
-  chat_openrouter(system_prompt = system_prompt, model = model)
-}
-
 # Needs OPENROUTER_API_KEY in the environment (e.g. in ~/.Renviron).
 # `models` is a named character vector of allowed models (label = name, value = id).
 # Returns a reactive with the id of the model currently in use.
@@ -69,8 +65,14 @@ server <- function(id, models = free_models(), session = getDefaultReactiveDomai
   input <- session$input
   updateSelectInput(session, model_input_id(id), choices = models, selected = openrouter_model)
 
+  # Failed requests become a chat message naming the model (see app/logic/client.R)
+  client_for <- function(model) {
+    label <- names(models)[models == model][1]
+    new_client(model, system_prompt = system_prompt, label = if (is.na(label) || !nzchar(label)) model else label)
+  }
+
   log_info("Chat client created with model {openrouter_model}")
-  chat <- chat_server(id, new_client(openrouter_model), history = FALSE)
+  chat <- chat_server(id, client_for(openrouter_model), history = FALSE)
   current_model <- reactiveVal(openrouter_model)
 
   # Swap the model mid-conversation; set_client() carries over the turns so far
@@ -80,12 +82,13 @@ server <- function(id, models = free_models(), session = getDefaultReactiveDomai
       log_warn("Ignoring unknown model selection")
       req(FALSE)
     }
-    chat$set_client(new_client(model))
+    chat$set_client(client_for(model))
     current_model(model)
     log_info("Switched model to {model}")
   })
 
-  # Log failed responses (e.g. rate limit, quota, dropped connection); never log message content
+  # Model request failures are handled (and logged) by the client; this catches anything else.
+  # Never log message content.
   observeEvent(chat$last_error(), {
     log_error("Chat response failed: {conditionMessage(chat$last_error())}")
   })
