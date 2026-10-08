@@ -23,6 +23,14 @@ default:
     # How long the fetched model list is reused before asking OpenRouter again
     models_cache_seconds: 3600
     request_timeout_seconds: 10
+    # Free models hidden from the dropdown because they don't work as a plain chatbot.
+    # The model list has no flag for this, so check new models with a real request.
+    excluded_models:
+      # 403: only available through agentic apps listed on https://openrouter.ai/apps
+      - "thinkingmachines/inkling:free"
+      - "thinkingmachines/inkling-small:free"
+      # Safety classifier (answers "safe"/"unsafe"), not a chat model
+      - "nvidia/nemotron-3.5-content-safety:free"
 
   # Any bslib theme variable can go here; see ?shinychat::page_chat_theme
   theme:

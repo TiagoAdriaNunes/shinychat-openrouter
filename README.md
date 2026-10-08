@@ -56,7 +56,7 @@ All app settings live in [`config.yml`](config.yml), read with the [`config`](ht
 | --- | --- |
 | Title, greeting, input placeholder, disclaimer | `app` |
 | System prompt | `chat` |
-| Default model, model list URL, cache duration, request timeout | `openrouter` |
+| Default model, model list URL, cache duration, request timeout, models hidden from the dropdown | `openrouter` |
 | Colors and chat styling (any bslib theme variable) | `theme` |
 
 To override values per environment, add a section (e.g. `production:`) with only the keys that differ and set `R_CONFIG_ACTIVE=production`.

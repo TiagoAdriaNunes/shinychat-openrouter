@@ -40,4 +40,7 @@ models_cache_seconds <- settings$openrouter$models_cache_seconds
 request_timeout_seconds <- settings$openrouter$request_timeout_seconds
 
 #' @export
+excluded_models <- as.character(unlist(settings$openrouter$excluded_models))
+
+#' @export
 theme_settings <- settings$theme

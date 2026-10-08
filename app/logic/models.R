@@ -8,7 +8,8 @@ box::use(
 
 box::use(
   . / config[
-    models_cache_seconds, models_url, openrouter_model, openrouter_model_label, request_timeout_seconds,
+    excluded_models, models_cache_seconds, models_url, openrouter_model, openrouter_model_label,
+    request_timeout_seconds,
   ],
 )
 
@@ -29,7 +30,7 @@ fetch_free_models <- function() {
     req_perform() |>
     resp_body_json()
 
-  free <- keep(models$data, \(m) is_free(m) && is_text_only(m))
+  free <- keep(models$data, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
   if (length(free) == 0) {
     stop("No free text models in the response")
   }
