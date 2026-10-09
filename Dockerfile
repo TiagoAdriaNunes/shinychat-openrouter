@@ -16,13 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libxml2-dev \
     libsodium-dev \
+    xz-utils \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Restore packages first so this layer is cached until renv.lock changes.
-# Linux binaries come from Posit Package Manager via renv.
+# The lockfile is snapshotted on Windows and records CRAN for some packages, which renv would build
+# from source on Linux (duckdb alone takes very long). Override every repository with Posit Package
+# Manager's prebuilt binaries for this image's Ubuntu release (noble = 24.04, as in rocker/r-ver:4.6.1).
+ENV RENV_CONFIG_REPOS_OVERRIDE=https://packagemanager.posit.co/cran/__linux__/noble/latest
 COPY .Rprofile renv.lock ./
 COPY renv/activate.R renv/activate.R
 COPY renv/settings.json renv/settings.json
