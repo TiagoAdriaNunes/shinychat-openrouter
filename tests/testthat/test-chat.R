@@ -23,7 +23,12 @@ test_that("ui() renders the model dropdown with the default model", {
   expect_match(html, 'id="chat_model"', fixed = TRUE)
   expect_match(html, 'value="openrouter/free"', fixed = TRUE)
   expect_match(html, 'id="chat_stats"', fixed = TRUE)
-  expect_match(html, 'id="chat_world_bank"', fixed = TRUE)
+  expect_match(html, 'id="chat_mode"', fixed = TRUE)
+  # Mode tabs: a radio input with a pill per mode, plain chat selected
+  expect_match(html, 'name="chat_mode" id="chat_mode_chat" value="chat" autocomplete="off" checked', fixed = TRUE)
+  expect_match(html, 'value="world_bank"', fixed = TRUE)
+  # The chat greeting points to World Bank data mode
+  expect_match(html, "World Bank data", fixed = TRUE)
   expect_match(html, 'href="https://github.com/TiagoAdriaNunes/shinychat-openrouter/"', fixed = TRUE)
   expect_match(html, "fa-github", fixed = TRUE)
 })
@@ -70,11 +75,11 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
     },
     {
       # The browser sends the initial values first
-      session$setInputs(chat_model = "b/beta:free", chat_world_bank = FALSE)
+      session$setInputs(chat_model = "b/beta:free", chat_mode = "chat")
       expect_false(result$world_bank())
 
       # Beta doesn't support tools, so the agent starts with the first tool-calling model
-      session$setInputs(chat_world_bank = TRUE)
+      session$setInputs(chat_mode = "world_bank")
       expect_true(result$world_bank())
       expect_equal(result$model(), "a/alpha:free")
 
@@ -84,11 +89,11 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
       expect_equal(result$model(), "c/gamma:free")
 
       # Gamma is in the plain chat list too, so it stays selected
-      session$setInputs(chat_world_bank = FALSE)
+      session$setInputs(chat_mode = "chat")
       expect_false(result$world_bank())
       expect_equal(result$model(), "c/gamma:free")
 
-      session$setInputs(chat_world_bank = TRUE)
+      session$setInputs(chat_mode = "world_bank")
       expect_true(result$world_bank())
       expect_equal(loads, 1)
     }
@@ -106,8 +111,8 @@ test_that("World Bank data mode stays off when the data can't be loaded", {
       )
     },
     {
-      session$setInputs(chat_model = "b/beta:free", chat_world_bank = FALSE)
-      session$setInputs(chat_world_bank = TRUE)
+      session$setInputs(chat_model = "b/beta:free", chat_mode = "chat")
+      session$setInputs(chat_mode = "world_bank")
       expect_false(result$world_bank())
       expect_equal(result$model(), "b/beta:free")
     }
@@ -156,13 +161,13 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
         last_request()
       }
 
-      session$setInputs(chat_model = "b/beta:free", chat_world_bank = FALSE)
+      session$setInputs(chat_model = "b/beta:free", chat_mode = "chat")
       plain <- ask("Hi")
       expect_equal(length(plain$tools), 0)
       expect_equal(plain$system, system_prompt)
       expect_null(plain$reasoning)
 
-      session$setInputs(chat_world_bank = TRUE)
+      session$setInputs(chat_mode = "world_bank")
       agent <- ask("GDP of Brazil?")
       expect_true(all(c("search_pool", "call_measure", "run_sql") %in% agent$tools))
       expect_match(agent$system, "## Additional instructions", fixed = TRUE)
@@ -176,7 +181,7 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       expect_equal(changed$model, "c/gamma:free")
       expect_true("call_measure" %in% changed$tools)
 
-      session$setInputs(chat_world_bank = FALSE)
+      session$setInputs(chat_mode = "chat")
       back <- ask("Hi again")
       expect_equal(length(back$tools), 0)
       expect_equal(back$system, system_prompt)

@@ -16,6 +16,9 @@ greeting <- settings$app$greeting
 placeholder <- settings$app$placeholder
 
 #' @export
+chat_mode_label <- settings$app$chat_mode_label
+
+#' @export
 disclaimer <- settings$app$disclaimer
 
 #' @export

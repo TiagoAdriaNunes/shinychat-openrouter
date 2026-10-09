@@ -6,7 +6,13 @@
 default:
   app:
     title: "shinychat + OpenRouter"
-    greeting: "**Hello!** How can I help you today?"
+    # Markdown; shown until the first message. Points people to the World Bank data mode tab.
+    greeting: |
+      **Hello!** How can I help you today?
+
+      Want real figures? Pick **World Bank data** below the message box to ask about GDP, inflation, population and more for any country since 1990.
+    # Label of the plain chat tab under the message box (the other tab is world_bank.label)
+    chat_mode_label: "Chat"
     placeholder: "Ask me anything..."
     disclaimer: "This is a personal demo project. Please don't share sensitive or personal information."
     # Source code link (GitHub icon in the top bar)
@@ -53,13 +59,21 @@ default:
       # Router: picks any free model at random, including the ones excluded here
       - "openrouter/free"
 
-  # "World Bank data" switch in the footer: a commons agent (https://posit-dev.github.io/commons/r/)
+  # "World Bank data" tab under the message box: a commons agent (https://posit-dev.github.io/commons/r/)
   # that answers from World Development Indicators downloaded with the WDI package
   # (https://vincentarelbundock.github.io/WDI/). Only free models that support tool calling are listed.
   world_bank:
     label: "World Bank data"
-    # Replaces the conversation when the switch is turned on; switching mode starts a new chat
-    greeting: "**World Bank data mode.** Ask me about GDP, growth, inflation, unemployment, population, trade, debt or inequality for any country or region since 1990."
+    # Replaces the greeting when the World Bank data tab is picked (switching mode starts a new chat).
+    # Each <span class="suggestion"> is a shinychat suggestion: clicking it fills the message box.
+    greeting: |
+      **World Bank data mode.** Answers come from the World Bank's World Development Indicators: GDP, growth, inflation, unemployment, population, trade, debt and inequality for any country or region since 1990.
+
+      Try:
+      <span class="suggestion">What is Brazil's GDP?</span>
+      <span class="suggestion">Which countries have the highest inflation?</span>
+      <span class="suggestion">How has India's population changed since 2000?</span>
+      <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
     unavailable: "World Bank data isn't available right now. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Added to the question when the model answered without looking anything up; the reply is
