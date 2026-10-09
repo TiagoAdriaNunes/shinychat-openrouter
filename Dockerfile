@@ -1,9 +1,17 @@
 FROM rocker/r-ver:4.6.1
 
-# System libraries needed by the R packages at build/run time
+# System libraries needed by the R packages at build/run time (fonts and images: ragg, used by commons)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libcurl4-openssl-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libfribidi-dev \
+    libharfbuzz-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libwebp-dev \
     libuv1-dev \
     libssl-dev \
     libxml2-dev \
@@ -22,6 +30,10 @@ RUN R -e "renv::restore(prompt = FALSE)"
 
 COPY app.R config.yml ./
 COPY app ./app
+
+# Bake the World Bank data into the image (cache/wdi.rds) so a cold machine doesn't download it
+# at startup; the app refreshes it once it is older than world_bank.cache_days in config.yml
+RUN R -e "options(box.path = '/app'); box::use(app/logic/wdi[load_wdi]); invisible(load_wdi())"
 
 # OPENROUTER_API_KEY is provided at runtime (fly secrets set), never baked into the image
 ENV LOG_LEVEL=INFO

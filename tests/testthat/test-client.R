@@ -52,7 +52,8 @@ test_that("a rate-limited model streams the friendly message and its stats show 
   client <- new_client("google/gemma:free", system_prompt = "Be brief.", label = "Gemma (free)")
   expect_s3_class(client, "Chat")
 
-  text <- collect_stream(client$stream_async("Hi", stream = "content"))
+  # Called the way shinychat does, splicing the message with !!!
+  text <- collect_stream(client$stream_async(!!!list("Hi"), stream = "content"))
   expect_equal(text, str_c("\n\n", expected(error_messages$rate_limited, "Gemma (free)")))
 
   # ellmer records the failed request as a partial turn
@@ -61,6 +62,22 @@ test_that("a rate-limited model streams the friendly message and its stats show 
   )
   expect_false(stats$ok)
   expect_equal(format_stats(stats), "Gemma (free) · incomplete after 8.0 s")
+})
+
+test_that("a client whose model changes names the current model when it fails", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(ellmer_max_tries = 1)
+  local_mocked_responses(function(req) response(status_code = 429))
+  labels <- c("google/gemma:free" = "Gemma (free)", "a/alpha:free" = "Alpha (free)")
+
+  client <- new_client("google/gemma:free", system_prompt = "Be brief.", label = \(model) labels[[model]])
+  client$set_model("a/alpha:free")
+
+  # Called the way shinychat does, splicing the message with !!!
+  text <- collect_stream(client$stream_async(!!!list("Hi"), stream = "content"))
+  expect_equal(text, str_c("
+
+", expected(error_messages$rate_limited, "Alpha (free)")))
 })
 
 test_that("safe_stream() passes a reply through without extra chunks (e.g. a trailing TRUE)", {

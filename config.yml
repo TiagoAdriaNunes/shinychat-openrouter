@@ -53,6 +53,93 @@ default:
       # Router: picks any free model at random, including the ones excluded here
       - "openrouter/free"
 
+  # "World Bank data" switch in the footer: a commons agent (https://posit-dev.github.io/commons/r/)
+  # that answers from World Development Indicators downloaded with the WDI package
+  # (https://vincentarelbundock.github.io/WDI/). Only free models that support tool calling are listed.
+  world_bank:
+    label: "World Bank data"
+    # Replaces the conversation when the switch is turned on; switching mode starts a new chat
+    greeting: "**World Bank data mode.** Ask me about GDP, growth, inflation, unemployment, population, trade, debt or inequality for any country or region since 1990."
+    unavailable: "World Bank data isn't available right now. Please try again later."
+    busy: "Please wait for the current response to finish before switching mode."
+    # Added to the question when the model answered without looking anything up; the reply is
+    # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
+    lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
+    # Added to a reply that still looked nothing up after the retry
+    unchecked_note: "*This reply didn't look anything up in the World Bank data; figures in it come from the model's general knowledge and may be wrong or out of date.*"
+    # Indicators downloaded for every country and aggregate. `name` is the column name in the
+    # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()).
+    indicators:
+      - name: gdp_usd
+        code: NY.GDP.MKTP.CD
+        description: "GDP (current US$)"
+      - name: gdp_growth_pct
+        code: NY.GDP.MKTP.KD.ZG
+        description: "GDP growth (annual %), constant prices"
+      - name: gdp_per_capita_usd
+        code: NY.GDP.PCAP.CD
+        description: "GDP per capita (current US$)"
+      - name: gdp_per_capita_ppp
+        code: NY.GDP.PCAP.PP.KD
+        description: "GDP per capita, PPP (constant 2021 international $)"
+      - name: inflation_pct
+        code: FP.CPI.TOTL.ZG
+        description: "Inflation, consumer prices (annual %)"
+      - name: unemployment_pct
+        code: SL.UEM.TOTL.ZS
+        description: "Unemployment, total (% of total labor force), modeled ILO estimate"
+      - name: population
+        code: SP.POP.TOTL
+        description: "Population, total"
+      - name: trade_pct_gdp
+        code: NE.TRD.GNFS.ZS
+        description: "Trade: exports plus imports of goods and services (% of GDP)"
+      - name: exports_pct_gdp
+        code: NE.EXP.GNFS.ZS
+        description: "Exports of goods and services (% of GDP)"
+      - name: fdi_inflows_pct_gdp
+        code: BX.KLT.DINV.WD.GD.ZS
+        description: "Foreign direct investment, net inflows (% of GDP)"
+      - name: gov_debt_pct_gdp
+        code: GC.DOD.TOTL.GD.ZS
+        description: "Central government debt, total (% of GDP); reported by few countries"
+      - name: gini
+        code: SI.POV.GINI
+        description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
+    start_year: 1990
+    # The download takes about 30 seconds, so it is saved here and reused until it is older than
+    # cache_days (an older copy is still used if a new download fails)
+    cache_file: "cache/wdi.rds"
+    cache_days: 7
+    # commons indexes the data dictionary for its context search (about 5 seconds); the index is
+    # built at startup and kept here, rebuilt only when the dictionary changes
+    context_cache: "cache/commons"
+    # Trusted calculations (commons semantic layer): R files of roxygen-documented `@measure`
+    # functions, or directories of them. Paths are relative to the project root.
+    measure_files:
+      - "app/measures"
+    # Markdown notes the agent retrieves when relevant (commons context layer): methodology and
+    # caveats for reading the indicators. Paths are relative to the project root.
+    context_files:
+      - "app/context/world-bank.md"
+    # commons runs the agent's R code in an OS sandbox, available on Linux and macOS only. On other
+    # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
+    # that are NOT a security boundary: only for local development (see the `development` section).
+    allow_unsafe_fallback: false
+    # Added to commons' system prompt, after the chat formatting guidance from `chat.system_prompt`
+    instructions: |
+      You are in World Bank data mode: every question about a country's or region's economy, population or
+      development must be answered from the data you can query, never from your own knowledge, even when you
+      think you know the answer. Always look the figures up with your tools first.
+      Read questions charitably: users make typos and use loose wording (for example "GPD" means GDP and
+      "what is the GDP of Brazil" asks for Brazil's GDP), so work out the indicator they mean and query it
+      instead of asking or answering from memory.
+      The data comes from the World Bank's World Development Indicators, downloaded with the WDI R package.
+      Prefer the trusted measures over custom SQL or R whenever one fits the question.
+      Always state the year of each figure, since the latest year with data differs by country and indicator.
+      Say so when an indicator, country or year is missing from the data instead of guessing or filling the gap
+      from your own knowledge. Questions unrelated to the data can be answered normally.
+
   # Shown in the chat instead of the raw error when a model request fails.
   # {model} is replaced with the model's name.
   errors:
@@ -70,3 +157,9 @@ default:
     border-radius: "0.75rem"
     shiny-chat-user-message-border-radius: "1.25rem"
     shiny-chat-user-message-padding: "0.625rem 1rem"
+
+# Local development on Windows: R_CONFIG_ACTIVE=development (e.g. in .Renviron) lets the
+# World Bank agent start without an OS sandbox. Never use it for a deployed app.
+development:
+  world_bank:
+    allow_unsafe_fallback: true
