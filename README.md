@@ -6,6 +6,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 
 - Streaming chat UI with a stop button, greeting and light/dark mode (Bootstrap 5 via `bslib`).
 - Model picker below the chat listing OpenRouter's [free models](https://openrouter.ai/collections/free-models), fetched live (cached for an hour) and ordered by Artificial Analysis intelligence index, most intelligent first. The chat starts with the top model; switching keeps the conversation. The `openrouter/free` router is used only if the list can't be fetched (it picks any free model at random, including non-chat ones).
+- **World Bank data mode**: a switch in the footer turns the chat into a [commons](https://posit-dev.github.io/commons/r/) data agent that answers from World Development Indicators (GDP, growth, inflation, unemployment, population, trade, debt, Gini; every country and aggregate since 1990) downloaded with [`WDI`](https://vincentarelbundock.github.io/WDI/). The agent uses trusted measures (latest values, time series, rankings, compound growth) where it can, otherwise writes SQL or R, and marks each answer as trusted, cited or untrusted. Only free models that support tool calling are listed in this mode, and switching mode starts a new conversation. If a model answers without looking anything up, the answer is dropped and the question asked again; a second answer from memory is labelled as such.
 - Modular code using [`box`](https://klmr.me/box/) for imports (no `library()` calls).
 - Reproducible environment with `renv`.
 - Logging with `logger` and clear startup errors with `cli`/`rlang`.
@@ -32,13 +33,15 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 
    `.Renviron` is git-ignored. Never commit your key.
 
+3. **Windows only**, to use World Bank data mode locally: add `R_CONFIG_ACTIVE=development` to the same `.Renviron`. commons runs the agent's R code in an OS sandbox that exists only on Linux and macOS; the `development` section of `config.yml` lets it fall back to best-effort guardrails, which are not a security boundary. Never set it on a deployed app.
+
 ## Run
 
 ```r
 shiny::runApp()
 ```
 
-The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid.
+The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid. It also loads the World Bank data: the first run downloads it (about 30 seconds) to `cache/wdi.rds`, which is reused for a week.
 
 ## Test
 
@@ -46,7 +49,7 @@ The app checks the configuration at startup and stops with a clear message if `O
 Rscript tests/testthat.R
 ```
 
-Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()`, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
+Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()` and the World Bank data with a small fake panel, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
 
 ## Configuration
 
@@ -57,6 +60,7 @@ All app settings live in [`config.yml`](config.yml), read with the [`config`](ht
 | Title, greeting, input placeholder, disclaimer | `app` |
 | System prompt | `chat` |
 | Default model, model list URL, cache duration, request timeout, models hidden from the dropdown | `openrouter` |
+| World Bank data mode: indicators, start year, data cache, agent instructions, messages | `world_bank` |
 | Messages shown when a model is rate limited, unavailable or fails | `errors` |
 | Colors and chat styling (any bslib theme variable) | `theme` |
 
@@ -82,9 +86,13 @@ app/
   modules/chat.R       Chat module (page_chat + chat_openrouter + chat_server)
   logic/
     config.R           Reads config.yml and exports the settings
-    models.R           Fetches and caches the free model list
+    models.R           Fetches and caches the free model list (optionally only tool-calling models)
     client.R           OpenRouter client that shows a friendly message when a model fails
-    theme.R            page_chat_theme() built from the config.yml theme section
+    wdi.R              Downloads and caches the World Bank data (WDI package)
+    agent.R            commons agent for World Bank data mode: data source, dictionary, lookup check
+  measures/world-bank.R  Trusted calculations for the agent (commons @measure functions)
+  context/world-bank.md  Notes on reading the indicators (commons context layer)
+    theme.R            commons_theme() (page_chat_theme() + commons assets) from the config.yml theme section
     checks.R           Startup validation (cli::cli_abort)
 tests/                 testthat suite (run with Rscript tests/testthat.R)
 .github/workflows/     CI: runs the tests on every push and pull request
@@ -106,7 +114,8 @@ flyctl deploy --ha=false
 
 - `--ha=false` keeps a single machine, which Shiny needs because each session is tied to one machine.
 - `fly.toml` uses a `shared-cpu-1x` machine with 1 GB of RAM in `gru` (São Paulo) that stops when idle and starts again on the next visit. Change `primary_region`, the `[[vm]]` block or `min_machines_running` to suit you.
-- The first build takes a few minutes while the R packages are installed.
+- The first build takes a few minutes while the R packages are installed. The build also downloads the World Bank data into the image, so a cold machine doesn't wait for it.
+- World Bank data mode needs the commons OS sandbox (seccomp plus Landlock or user namespaces), which a modern Linux kernel such as Fly.io's provides. If it isn't available, the mode shows "unavailable" and the log says why.
 
 ## Notes
 

@@ -1,18 +1,19 @@
 box::use(
   bslib[bs_add_rules],
-  shinychat[page_chat_theme],
+  commons[commons_theme],
 )
 
 box::use(
   . / config[theme_settings],
 )
 
-# Theme variables come from the `theme` section of config.yml.
+# Theme variables come from the `theme` section of config.yml. commons_theme() is shinychat's
+# page_chat_theme() plus the commons chat assets (provenance markers in World Bank data mode).
 # Top bar icons (GitHub link and dark mode toggle): bslib sets every element inside a toolbar to
 # font-size 0.9rem, so these selectors need to be more specific than `.bslib-toolbar :not(...)`.
 # Both icons get the same centred square so they line up; the toggle is drawn at 1.3em of its font-size.
 #' @export
-chat_theme <- do.call(page_chat_theme, theme_settings) |>
+chat_theme <- do.call(commons_theme, theme_settings) |>
   bs_add_rules("
     .shiny-chat-page-toolbar-global .bslib-toolbar > .btn-link,
     .shiny-chat-page-toolbar-global .bslib-toolbar > bslib-input-dark-mode {

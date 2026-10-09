@@ -1,10 +1,9 @@
 box::use(
   checkmate[test_null, test_number, test_string],
   coro[async_generator, await_each, yield],
-  ellmer[Chat, chat_openrouter],
+  ellmer[chat_openrouter],
   glue[glue, glue_data],
   logger[log_warn],
-  R6[R6Class],
   stringr[fixed, str_c, str_flatten, str_remove, str_starts],
 )
 
@@ -56,25 +55,34 @@ safe_stream <- async_generator(function(stream, model) {
   NULL
 })
 
-# ellmer Chat whose streamed responses never error; `label` is the model name shown to users
-SafeChat <- R6Class(
-  "SafeChat",
-  inherit = Chat,
-  public = list(
-    label = NULL,
-    stream_async = function(...) {
-      safe_stream(super$stream_async(...), self$label %||% self$get_model())
-    }
-  )
-)
+#' Replace an ellmer Chat's `stream_async(...)` with `wrap(original, ...)`, in place: `wrap` gets
+#' the original method and the call's arguments and returns the stream. (Not named `stream_async`:
+#' shinychat passes `stream = "content"`, which R would partially match to it.) Works on any Chat,
+#' including commons agents, whose class isn't exported and so can't be subclassed.
+#' @export
+wrap_stream <- function(client, wrap) {
+  stream_async <- client$stream_async
+  # R6 locks method bindings; unlock just this one to wrap it
+  unlockBinding("stream_async", client)
+  client$stream_async <- function(...) wrap(stream_async, ...)
+  lockBinding("stream_async", client)
+  client
+}
+
+#' Make an ellmer Chat's streamed responses never error (see safe_stream()). `label` is the model
+#' name shown to users, or a function of the model id (for a client whose model changes with
+#' `set_model()`).
+#' @export
+guard_stream <- function(client, label) {
+  wrap_stream(client, \(original, ...) {
+    safe_stream(original(...), if (is.function(label)) label(client$get_model()) else label)
+  })
+}
 
 #' OpenRouter chat client that turns failed requests into a chat message asking to pick another model.
 #' @export
 new_client <- function(model, system_prompt, label = model) {
-  base <- chat_openrouter(system_prompt = system_prompt, model = model)
-  client <- SafeChat$new(provider = base$get_provider(), system_prompt = system_prompt)
-  client$label <- label
-  client
+  guard_stream(chat_openrouter(system_prompt = system_prompt, model = model), label)
 }
 
 # Model id without the ":free" variant suffix, for comparing requested and answering models

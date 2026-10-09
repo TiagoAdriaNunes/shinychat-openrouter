@@ -49,6 +49,9 @@ request_timeout_seconds <- settings$openrouter$request_timeout_seconds
 excluded_models <- as.character(unlist(settings$openrouter$excluded_models))
 
 #' @export
+world_bank <- settings$world_bank
+
+#' @export
 error_messages <- settings$errors
 
 #' @export
