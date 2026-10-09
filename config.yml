@@ -6,7 +6,13 @@
 default:
   app:
     title: "shinychat + OpenRouter"
-    greeting: "**Hello!** How can I help you today?"
+    # Markdown; shown until the first message. Points people to the World Bank data mode tab.
+    greeting: |
+      **Hello!** How can I help you today?
+
+      Want real figures? Pick **World Bank data** below the message box to ask about GDP, inflation, population and more for any country since 1990.
+    # Label of the plain chat tab under the message box (the other tab is world_bank.label)
+    chat_mode_label: "Chat"
     placeholder: "Ask me anything..."
     disclaimer: "This is a personal demo project. Please don't share sensitive or personal information."
     # Source code link (GitHub icon in the top bar)
@@ -53,6 +59,112 @@ default:
       # Router: picks any free model at random, including the ones excluded here
       - "openrouter/free"
 
+  # "World Bank data" tab under the message box: a commons agent (https://posit-dev.github.io/commons/r/)
+  # that answers from World Development Indicators downloaded with the WDI package
+  # (https://vincentarelbundock.github.io/WDI/). Only free models that support tool calling are listed.
+  world_bank:
+    label: "World Bank data"
+    # Replaces the greeting when the World Bank data tab is picked (switching mode starts a new chat).
+    # Each <span class="suggestion"> is a shinychat suggestion: clicking it fills the message box.
+    greeting: |
+      **World Bank data mode.** Answers come from the World Bank's World Development Indicators: GDP, growth, inflation, unemployment, population, trade, debt and inequality for any country or region since 1990.
+
+      Try:
+      <span class="suggestion">What is Brazil's GDP?</span>
+      <span class="suggestion">Which countries have the highest inflation?</span>
+      <span class="suggestion">How has India's population changed since 2000?</span>
+      <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
+    unavailable: "World Bank data isn't available right now. Please try again later."
+    busy: "Please wait for the current response to finish before switching mode."
+    # Added to the question when the model answered without looking anything up; the reply is
+    # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
+    lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
+    # Shown instead of the reply when the model answered twice without looking anything up (its
+    # figures would be made up). {model} is replaced with the model's name.
+    no_lookup: "**{model} didn't look anything up in the World Bank data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
+    # Indicators downloaded for every country and aggregate. `name` is the column name in the
+    # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()).
+    indicators:
+      - name: gdp_usd
+        code: NY.GDP.MKTP.CD
+        description: "GDP (current US$)"
+      - name: gdp_growth_pct
+        code: NY.GDP.MKTP.KD.ZG
+        description: "GDP growth (annual %), constant prices"
+      - name: gdp_per_capita_usd
+        code: NY.GDP.PCAP.CD
+        description: "GDP per capita (current US$)"
+      - name: gdp_per_capita_ppp
+        code: NY.GDP.PCAP.PP.KD
+        description: "GDP per capita, PPP (constant 2021 international $)"
+      - name: inflation_pct
+        code: FP.CPI.TOTL.ZG
+        description: "Inflation, consumer prices (annual %)"
+      - name: unemployment_pct
+        code: SL.UEM.TOTL.ZS
+        description: "Unemployment, total (% of total labor force), modeled ILO estimate"
+      - name: population
+        code: SP.POP.TOTL
+        description: "Population, total"
+      - name: trade_pct_gdp
+        code: NE.TRD.GNFS.ZS
+        description: "Trade: exports plus imports of goods and services (% of GDP)"
+      - name: exports_pct_gdp
+        code: NE.EXP.GNFS.ZS
+        description: "Exports of goods and services (% of GDP)"
+      - name: fdi_inflows_pct_gdp
+        code: BX.KLT.DINV.WD.GD.ZS
+        description: "Foreign direct investment, net inflows (% of GDP)"
+      - name: gov_debt_pct_gdp
+        code: GC.DOD.TOTL.GD.ZS
+        description: "Central government debt, total (% of GDP); reported by few countries"
+      - name: gini
+        code: SI.POV.GINI
+        description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
+    start_year: 1990
+    # The download takes about 30 seconds, so it is saved here and reused until it is older than
+    # cache_days (an older copy is still used if a new download fails)
+    cache_file: "cache/wdi.rds"
+    cache_days: 7
+    # commons indexes the data dictionary for its context search (about 5 seconds); the index is
+    # built at startup and kept here, rebuilt only when the dictionary changes
+    context_cache: "cache/commons"
+    # Trusted calculations (commons semantic layer): R files of roxygen-documented `@measure`
+    # functions, or directories of them. Paths are relative to the project root.
+    measure_files:
+      - "app/measures"
+    # Markdown notes the agent retrieves when relevant (commons context layer): methodology and
+    # caveats for reading the indicators. Paths are relative to the project root.
+    context_files:
+      - "app/context/world-bank.md"
+    # commons runs the agent's R code in an OS sandbox, available on Linux and macOS only. On other
+    # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
+    # that are NOT a security boundary: only for local development (see the `development` section).
+    allow_unsafe_fallback: false
+    # How much the model thinks before each step (OpenRouter `reasoning.effort`: none, minimal, low,
+    # medium, high, xhigh). The agent mostly picks a measure and reads a small table, so a low effort
+    # answers much faster. Models without adjustable reasoning ignore it. Empty to use each model's default.
+    reasoning_effort: "low"
+    # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
+    # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
+    # role and the trusted-calculation workflow, and data knowledge belongs in the data dictionary
+    # (app/logic/agent.R), the measures (app/measures/) and the context notes (app/context/).
+    # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
+    # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
+    # {indicators} is replaced with the indicator names above.
+    instructions: |
+      Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
+      Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
+      "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
+      These are all the trusted measures, so call them directly with call_measure; use search_pool only for questions none of them answers:
+      - latest_values(indicator, economies): the latest value for countries or regions ("What is Brazil's GDP?").
+      - indicator_series(indicator, economies, start_year?, end_year?): values over time.
+      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
+      - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
+      `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
+      State the year of every figure.
+      Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.
+
   # Shown in the chat instead of the raw error when a model request fails.
   # {model} is replaced with the model's name.
   errors:
@@ -70,3 +182,9 @@ default:
     border-radius: "0.75rem"
     shiny-chat-user-message-border-radius: "1.25rem"
     shiny-chat-user-message-padding: "0.625rem 1rem"
+
+# Local development on Windows: R_CONFIG_ACTIVE=development (e.g. in .Renviron) lets the
+# World Bank agent start without an OS sandbox. Never use it for a deployed app.
+development:
+  world_bank:
+    allow_unsafe_fallback: true

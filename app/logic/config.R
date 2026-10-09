@@ -16,6 +16,9 @@ greeting <- settings$app$greeting
 placeholder <- settings$app$placeholder
 
 #' @export
+chat_mode_label <- settings$app$chat_mode_label
+
+#' @export
 disclaimer <- settings$app$disclaimer
 
 #' @export
@@ -47,6 +50,9 @@ request_timeout_seconds <- settings$openrouter$request_timeout_seconds
 
 #' @export
 excluded_models <- as.character(unlist(settings$openrouter$excluded_models))
+
+#' @export
+world_bank <- settings$world_bank
 
 #' @export
 error_messages <- settings$errors

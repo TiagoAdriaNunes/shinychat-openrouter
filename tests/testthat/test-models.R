@@ -15,6 +15,12 @@ test_that("free_models() keeps free text-only, non-excluded models, most intelli
   expect_equal(free_models(fetch = fetch_free_models), fake_models)
 })
 
+test_that("free_models(tools_only = TRUE) keeps only models that support tool calling", {
+  local_mocked_responses(function(req) response_json(body = fake_catalogue))
+
+  expect_equal(free_models(fetch = fetch_free_models, tools_only = TRUE), fake_tool_models)
+})
+
 test_that("free_models() falls back to the fallback model when the request fails", {
   local_mocked_responses(function(req) response(status_code = 500))
 
