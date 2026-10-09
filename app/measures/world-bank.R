@@ -56,12 +56,18 @@ wdi_economy_values <- function(wdi, indicator, economies) {
   rows
 }
 
-#' Latest value of a World Bank indicator
+#' Latest value of a World Bank indicator for a country
 #'
-#' Most recent available value of a World Bank indicator for each country or aggregate, with its year.
+#' Use for "what is", "how much", "how big" or "current" questions about one or more countries or
+#' regions, e.g. "What is Brazil's GDP?", "Population of India", "Inflation in Argentina now".
+#' Returns the most recent available value and its year, for any indicator in the data: GDP (gross
+#' domestic product, size of the economy), GDP growth, GDP per capita (income per person), GDP per
+#' capita PPP, inflation (consumer prices), unemployment, population, trade, exports, foreign direct
+#' investment (FDI), government debt and the Gini index (inequality).
 #'
-#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, gdp_per_capita_usd,
-#'   gdp_per_capita_ppp, inflation_pct, unemployment_pct, population, gini.
+#' @param indicator `string` Indicator column: gdp_usd (GDP, current US$), gdp_growth_pct (real GDP
+#'   growth, %), gdp_per_capita_usd, gdp_per_capita_ppp, inflation_pct, unemployment_pct, population,
+#'   trade_pct_gdp, exports_pct_gdp, fdi_inflows_pct_gdp, gov_debt_pct_gdp, gini.
 #' @param economies `string` Countries or aggregates separated by semicolons, as World Bank names or
 #'   ISO3 codes, e.g. 'Brazil; Korea, Rep.; World; Euro area; High income' or 'BRA; KOR; WLD'.
 #' @return One row per economy: economy, iso3c, year, and the indicator.
@@ -73,12 +79,16 @@ latest_values <- function(wdi, indicator, economies) {
   latest
 }
 
-#' Yearly values of a World Bank indicator
+#' Yearly values of a World Bank indicator over time
 #'
-#' Yearly values of a World Bank indicator for countries or aggregates, for trends and comparisons
-#' over time.
+#' Use for trends, history and "how has it changed" questions, e.g. "Brazil's GDP since 2010",
+#' "Inflation in Turkey over the last decade", "Compare unemployment in Spain and Italy over time".
+#' Returns one value per year for countries or regions, for any indicator in the data: GDP, GDP
+#' growth, GDP per capita, PPP, inflation, unemployment, population, trade, exports, FDI, government
+#' debt and the Gini index (inequality).
 #'
-#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, inflation_pct, population.
+#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, inflation_pct, population
+#'   (same columns as latest_values).
 #' @param economies `string` Countries or aggregates separated by semicolons, as World Bank names or
 #'   ISO3 codes, e.g. 'Brazil; Chile' or 'BRA; CHL; WLD'.
 #' @param start_year `integer` First year to include.
@@ -96,11 +106,16 @@ indicator_series <- function(wdi, indicator, economies, start_year = NULL, end_y
 
 #' Countries ranked by a World Bank indicator
 #'
-#' Countries (not aggregates) ranked by a World Bank indicator in one year, optionally within one
-#' World Bank region. Without a year, uses the latest year reported by at least half as many
-#' countries as the best-covered year, so a ranking isn't based on the few early reporters.
+#' Use for "top", "largest", "highest", "lowest", "richest", "poorest" or "which countries"
+#' questions, e.g. "Largest economies by GDP", "Highest inflation in Africa", "Poorest countries
+#' by GDP per capita". Ranks countries (not aggregates) in one year, optionally within one World
+#' Bank region, for any indicator: GDP, GDP growth, GDP per capita, PPP, inflation, unemployment,
+#' population, trade, exports, FDI, government debt or the Gini index (inequality). Without a year,
+#' uses the latest year reported by at least half as many countries as the best-covered year, so a
+#' ranking isn't based on the few early reporters.
 #'
-#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_per_capita_ppp, inflation_pct.
+#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_per_capita_ppp, inflation_pct
+#'   (same columns as latest_values).
 #' @param year `integer` Year to rank. Default: the latest year most countries report.
 #' @param top_n `integer` How many countries to return. Default 10.
 #' @param lowest_first `boolean` Rank from the lowest value instead of the highest.
@@ -141,9 +156,11 @@ indicator_ranking <- function(wdi, indicator, year = NULL, top_n = 10, lowest_fi
 
 #' Compound annual growth rate of a World Bank indicator
 #'
-#' Compound annual growth rate (%) of an amount, such as GDP, GDP per capita or population, between
-#' two years, for countries or aggregates. Not meaningful for rates or shares (growth, inflation,
-#' unemployment, % of GDP).
+#' Use for "average annual growth between two years" questions, e.g. "How fast did China's GDP
+#' grow per year from 2000 to 2020?". Returns the compound annual growth rate (%) of an amount (GDP,
+#' GDP per capita or population) between two years, for countries or regions. Not for a single
+#' year's GDP growth (use latest_values or indicator_series with gdp_growth_pct), nor for rates or
+#' shares (inflation, unemployment, % of GDP).
 #'
 #' @param indicator `string` Amount column: gdp_usd, gdp_per_capita_usd, gdp_per_capita_ppp or population.
 #' @param economies `string` Countries or aggregates separated by semicolons, as World Bank names or

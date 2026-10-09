@@ -65,8 +65,9 @@ default:
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
     lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
-    # Added to a reply that still looked nothing up after the retry
-    unchecked_note: "*This reply didn't look anything up in the World Bank data; figures in it come from the model's general knowledge and may be wrong or out of date.*"
+    # Shown instead of the reply when the model answered twice without looking anything up (its
+    # figures would be made up). {model} is replaced with the model's name.
+    no_lookup: "**{model} didn't look anything up in the World Bank data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
     # Indicators downloaded for every country and aggregate. `name` is the column name in the
     # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()).
     indicators:
@@ -126,19 +127,29 @@ default:
     # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
     # that are NOT a security boundary: only for local development (see the `development` section).
     allow_unsafe_fallback: false
-    # Added to commons' system prompt, after the chat formatting guidance from `chat.system_prompt`
+    # How much the model thinks before each step (OpenRouter `reasoning.effort`: none, minimal, low,
+    # medium, high, xhigh). The agent mostly picks a measure and reads a small table, so a low effort
+    # answers much faster. Models without adjustable reasoning ignore it. Empty to use each model's default.
+    reasoning_effort: "low"
+    # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
+    # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
+    # role and the trusted-calculation workflow, and data knowledge belongs in the data dictionary
+    # (app/logic/agent.R), the measures (app/measures/) and the context notes (app/context/).
+    # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
+    # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
+    # {indicators} is replaced with the indicator names above.
     instructions: |
-      You are in World Bank data mode: every question about a country's or region's economy, population or
-      development must be answered from the data you can query, never from your own knowledge, even when you
-      think you know the answer. Always look the figures up with your tools first.
-      Read questions charitably: users make typos and use loose wording (for example "GPD" means GDP and
-      "what is the GDP of Brazil" asks for Brazil's GDP), so work out the indicator they mean and query it
-      instead of asking or answering from memory.
-      The data comes from the World Bank's World Development Indicators, downloaded with the WDI R package.
-      Prefer the trusted measures over custom SQL or R whenever one fits the question.
-      Always state the year of each figure, since the latest year with data differs by country and indicator.
-      Say so when an indicator, country or year is missing from the data instead of guessing or filling the gap
-      from your own knowledge. Questions unrelated to the data can be answered normally.
+      Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
+      Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
+      "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
+      These are all the trusted measures, so call them directly with call_measure; use search_pool only for questions none of them answers:
+      - latest_values(indicator, economies): the latest value for countries or regions ("What is Brazil's GDP?").
+      - indicator_series(indicator, economies, start_year?, end_year?): values over time.
+      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
+      - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
+      `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
+      State the year of every figure.
+      Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.
 
   # Shown in the chat instead of the raw error when a model request fails.
   # {model} is replaced with the model's name.

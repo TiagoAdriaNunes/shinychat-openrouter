@@ -9,7 +9,7 @@
 
 ## Coverage and gaps
 
-- The latest year with data differs by country and indicator: recent years are often missing for small or fragile economies. Always give the year of each figure.
+- Recent years are often missing for small or fragile economies.
 - Unemployment (`unemployment_pct`) is a modeled ILO estimate, available for most countries every year even where no survey was run.
 - The Gini index (`gini`) comes from household surveys run every few years, so most countries have gaps; use each country's latest survey year and say how old it is.
 - Central government debt (`gov_debt_pct_gdp`) is reported by few countries and covers central government only, not total public debt.
@@ -17,7 +17,7 @@
 
 ## Countries, regions and groups
 
-- Country names follow World Bank spelling: "Korea, Rep." (South Korea), "Korea, Dem. People's Rep." (North Korea), "Russian Federation", "Turkiye", "Egypt, Arab Rep.", "Iran, Islamic Rep.", "Venezuela, RB", "Viet Nam", "Czechia", "Slovak Republic", "Congo, Dem. Rep." (Kinshasa), "Congo, Rep." (Brazzaville), "Cote d'Ivoire", "Lao PDR", "Gambia, The", "Bahamas, The", "Yemen, Rep.", "Syrian Arab Republic". ISO3 codes (e.g. KOR, RUS) avoid spelling problems.
+- World Bank spellings of common names: "Korea, Rep." (South Korea), "Korea, Dem. People's Rep." (North Korea), "Russian Federation", "Turkiye", "Egypt, Arab Rep.", "Iran, Islamic Rep.", "Venezuela, RB", "Viet Nam", "Czechia", "Slovak Republic", "Congo, Dem. Rep." (Kinshasa), "Congo, Rep." (Brazzaville), "Cote d'Ivoire", "Lao PDR", "Gambia, The", "Bahamas, The", "Yemen, Rep.", "Syrian Arab Republic". ISO3 codes (e.g. KOR, RUS) avoid spelling problems.
 - Regions and income groups are the World Bank's current classification, applied to every year in the data: a country that is high income today shows as high income in 1990 too.
 - Income groups are set every July from GNI per capita (Atlas method); they are not based on the GDP figures in this data.
-- Totals for the world, regions, income groups, the Euro area, the European Union and OECD members are in the `aggregates` table. The World Bank computes them with weights and estimates for missing countries, so use them rather than adding up or averaging countries, which would give wrong results.
+- Aggregates include World Bank estimates for countries with missing data, so an aggregate can have a value for a year in which some of its countries don't.

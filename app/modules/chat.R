@@ -134,9 +134,12 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
   client <- client_for(initial_model, FALSE)
   chat <- chat_server(id, client, history = FALSE)
 
+  # sync = FALSE: by default set_client() copies the old client's turns, system prompt AND tools onto
+  # the new one, which would replace the agent's commons prompt and tools with the plain chat's (none).
+  # Switching mode starts a new conversation anyway.
   use_client <- function(new_client, model) {
     client <<- new_client
-    chat$set_client(client)
+    chat$set_client(client, sync = FALSE)
     current_model(model)
   }
 

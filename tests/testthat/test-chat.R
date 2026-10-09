@@ -1,10 +1,12 @@
 box::use(
+  httr2[local_mocked_responses, response],
   shiny[testServer],
   testthat[expect_equal, expect_false, expect_match, expect_null, expect_true, test_that],
   withr[local_envvar, local_options],
 )
 
 box::use(
+  app / logic / config[system_prompt, world_bank],
   app / logic / wdi[split_panel],
   app / modules / chat,
 )
@@ -108,6 +110,76 @@ test_that("World Bank data mode stays off when the data can't be loaded", {
       session$setInputs(chat_world_bank = TRUE)
       expect_false(result$world_bank())
       expect_equal(result$model(), "b/beta:free")
+    }
+  )
+})
+
+test_that("World Bank data mode sends the commons agent's prompt and tools, plain chat sends neither", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE, ellmer_max_tries = 1)
+  sent <- list()
+  local_mocked_responses(function(req) {
+    sent[[length(sent) + 1]] <<- req$body$data
+    response(status_code = 503)
+  })
+  last_request <- function() {
+    body <- sent[[length(sent)]]
+    list(
+      model = body$model,
+      tools = vapply(body$tools, \(tool) tool[["function"]]$name, ""),
+      system = body$messages[[1]]$content,
+      reasoning = body$reasoning
+    )
+  }
+
+  testServer(
+    function(input, output, session) {
+      result <- chat$server(
+        "chat",
+        models = fake_models, agent_models = fake_tool_models, world_bank_data = function() fake_panel()
+      )
+    },
+    {
+      ask <- function(text) {
+        n <- length(sent)
+        session$setInputs(chat_user_input = list(text))
+        deadline <- Sys.time() + 10
+        while (length(sent) == n && Sys.time() < deadline) {
+          later::run_now(0.05)
+          session$flushReact()
+        }
+        # Let the failed response finish before the next step
+        for (i in 1:20) {
+          later::run_now(0.05)
+          session$flushReact()
+        }
+        last_request()
+      }
+
+      session$setInputs(chat_model = "b/beta:free", chat_world_bank = FALSE)
+      plain <- ask("Hi")
+      expect_equal(length(plain$tools), 0)
+      expect_equal(plain$system, system_prompt)
+      expect_null(plain$reasoning)
+
+      session$setInputs(chat_world_bank = TRUE)
+      agent <- ask("GDP of Brazil?")
+      expect_true(all(c("search_pool", "call_measure", "run_sql") %in% agent$tools))
+      expect_match(agent$system, "## Additional instructions", fixed = TRUE)
+      expect_match(agent$system, "Answer only from the data", fixed = TRUE)
+      expect_false(grepl(system_prompt, agent$system, fixed = TRUE))
+      expect_equal(agent$reasoning$effort, world_bank$reasoning_effort)
+
+      # Changing model keeps the agent
+      session$setInputs(chat_model = "c/gamma:free")
+      changed <- ask("GDP of Chile?")
+      expect_equal(changed$model, "c/gamma:free")
+      expect_true("call_measure" %in% changed$tools)
+
+      session$setInputs(chat_world_bank = FALSE)
+      back <- ask("Hi again")
+      expect_equal(length(back$tools), 0)
+      expect_equal(back$system, system_prompt)
     }
   )
 })

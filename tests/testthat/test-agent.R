@@ -1,12 +1,12 @@
 box::use(
   purrr[keep],
-  stringr[str_c],
+  stringr[fixed, str_c, str_replace_all],
   testthat[expect_equal, expect_error, expect_false, expect_message, expect_s3_class, expect_true, test_that],
   withr[defer, local_envvar, local_options],
 )
 
 box::use(
-  app / logic / agent[ground_agent, grounded_stream, new_agent, used_tools, wdi_source],
+  app / logic / agent[agent_instructions, ground_agent, grounded_stream, has_lookup, new_agent, reasoning_args, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
 )
@@ -89,15 +89,6 @@ test_that("new_agent() builds a commons agent with guarded streaming over the Wo
   expect_true(inherits(agent, "Commons"))
 })
 
-test_that("used_tools() looks only at the turns after `from`", {
-  ask <- ellmer::UserTurn(list(ellmer::ContentText("GDP of Brazil?")))
-  lookup <- ellmer::AssistantTurn(list(ellmer::ContentToolRequest("1", "call_measure", list())))
-  answer <- ellmer::AssistantTurn(list(ellmer::ContentText("About 2 trillion.")))
-
-  expect_true(used_tools(list(ask, lookup, answer), 0))
-  expect_false(used_tools(list(ask, lookup, ask, answer), 2))
-})
-
 # Stand-in for a commons agent: `replies` is one list of chunks per stream_async() call; a reply that
 # contains a tool request records a turn with one, like ellmer does
 fake_agent <- function(replies) {
@@ -125,7 +116,7 @@ lookup <- ellmer::ContentToolRequest("1", "call_measure", list())
 
 grounded <- function(agent, controller = NULL) {
   args <- list("GDP of Brazil?", stream = "content", controller = controller)
-  collect_stream(grounded_stream(agent$stream_async, agent, args))
+  collect_stream(grounded_stream(agent$stream_async, agent, args, "Gemma"))
 }
 
 test_that("a reply that looks the data up is passed through, including text before the lookup", {
@@ -145,25 +136,68 @@ test_that("a reply from memory is dropped and the question asked again with the 
   expect_equal(length(agent$turns), 2)
 })
 
-test_that("a retry that still looks nothing up ends with the unchecked note", {
-  agent <- fake_agent(list(list("Hi!"), list("Hello again!")))
+test_that("a model that never looks anything up gets the no-lookup message instead of its answer", {
+  # e.g. made-up figures after fake tool calls written as text
+  agent <- fake_agent(list(list('{"tool": "browser.search"} About 2.17 trillion.'), list("Still 2.17 trillion.")))
 
-  expect_equal(grounded(agent), str_c("Hello again!\n\n", world_bank$unchecked_note))
+  expected <- str_replace_all(world_bank$no_lookup, fixed("{model}"), "Gemma")
+  expect_equal(grounded(agent), expected)
+  expect_equal(length(agent$calls), 2)
+  # Neither made-up answer stays in the conversation
+  expect_equal(agent$turns, list())
 })
 
-test_that("a reply the user stopped is shown as it is, never retried", {
+test_that("a reply the user stopped before any lookup shows nothing and isn't retried", {
   agent <- fake_agent(list(list("Partial answer")))
-  controller <- ellmer:::stream_controller()
+  controller <- ellmer::stream_controller()
   controller$cancel()
 
-  expect_equal(grounded(agent, controller), "Partial answer")
+  expect_equal(grounded(agent, controller), "")
   expect_equal(length(agent$calls), 1)
 })
 
 test_that("the grounded agent accepts shinychat's spliced call, stream_async(!!!user_input, ...)", {
-  agent <- ground_agent(fake_agent(list(list(lookup, "From the data."))))
+  agent <- ground_agent(fake_agent(list(list(lookup, "From the data."))), "Gemma")
   user_input <- list("GDP of Brazil?")
 
   expect_equal(collect_stream(agent$stream_async(!!!user_input, stream = "content")), "From the data.")
   expect_equal(agent$calls[[1]][[1]], "GDP of Brazil?")
+})
+
+test_that("has_lookup() counts successful tool results only", {
+  ask <- ellmer::UserTurn(list(ellmer::ContentText("GDP of Brazil?")))
+  found <- ellmer::UserTurn(list(ellmer::ContentToolResult(value = "2.28e12", request = lookup)))
+  failed <- ellmer::UserTurn(list(ellmer::ContentToolResult(error = "Unknown indicator", request = lookup)))
+
+  expect_true(has_lookup(list(ask, found)))
+  expect_false(has_lookup(list(ask, failed)))
+  expect_false(has_lookup(list()))
+})
+
+test_that("once data was looked up, a follow-up answered from it is shown, not dropped or retried", {
+  agent <- fake_agent(list(list("As found above: 2.28 trillion (2025).")))
+  agent$turns <- list(
+    ellmer::UserTurn(list(ellmer::ContentText("GDP of Brazil?"))),
+    ellmer::AssistantTurn(list(lookup)),
+    ellmer::UserTurn(list(ellmer::ContentToolResult(value = "2.28e12", request = lookup)))
+  )
+
+  expect_equal(grounded(agent), "As found above: 2.28 trillion (2025).")
+  expect_equal(length(agent$calls), 1)
+})
+
+test_that("reasoning_args() sends OpenRouter's reasoning effort, or nothing when it's empty", {
+  expect_equal(reasoning_args("low"), list(reasoning = list(effort = "low")))
+  expect_equal(reasoning_args(""), list())
+  expect_equal(reasoning_args(NULL), list())
+})
+
+test_that("agent_instructions() lists every configured indicator for direct measure calls", {
+  text <- agent_instructions()
+
+  expect_match(text, "latest_values(indicator, economies)", fixed = TRUE)
+  for (indicator in c("gdp_usd", "population", "gov_debt_pct_gdp", "gini")) {
+    expect_match(text, indicator, fixed = TRUE)
+  }
+  expect_false(grepl("{indicators}", text, fixed = TRUE))
 })
