@@ -1,10 +1,10 @@
 box::use(
-  bslib[input_dark_mode, input_switch, toolbar, update_switch],
+  bslib[input_dark_mode, toolbar],
   checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
   shiny[
     getDefaultReactiveDomain, icon, observeEvent, reactive, reactiveVal, renderText, req,
-    showNotification, tagAppendAttributes, tags, textOutput, updateSelectInput,
+    showNotification, tagList, tags, textOutput, updateRadioButtons, updateSelectInput,
   ],
   shinychat[chat_server, page_chat],
   stringr[str_c, str_detect],
@@ -13,7 +13,7 @@ box::use(
 box::use(
   .. / logic / agent[new_agent, wdi_source],
   .. / logic / config[
-    app_title, disclaimer, fallback_model, fallback_model_label, greeting, models_page_url,
+    app_title, chat_mode_label, disclaimer, fallback_model, fallback_model_label, greeting, models_page_url,
     placeholder, show_response_stats, source_url, system_prompt, world_bank,
   ],
   .. / logic / client[format_stats, new_client, response_stats],
@@ -26,7 +26,31 @@ external_link <- function(href, ...) {
   tags$a(href = href, target = "_blank", rel = "noopener noreferrer", ...)
 }
 
-mode_input_id <- function(id) str_c(id, "_world_bank")
+mode_input_id <- function(id) str_c(id, "_mode")
+
+# "Chat" / "World Bank data" pills under the message box: a Shiny radio input (value "chat" or
+# "world_bank") drawn as Bootstrap toggle buttons, so the mode is visible where people type
+mode_tabs <- function(id) {
+  input_id <- mode_input_id(id)
+  option <- function(value, label, icon_name, checked = FALSE) {
+    button_id <- str_c(input_id, "_", value)
+    tagList(
+      tags$input(
+        type = "radio", class = "btn-check", name = input_id, id = button_id, value = value,
+        autocomplete = "off", checked = if (checked) NA
+      ),
+      tags$label(class = "btn btn-sm btn-outline-primary rounded-pill px-3", `for` = button_id, icon(icon_name), label)
+    )
+  }
+  tags$div(
+    id = input_id,
+    class = "shiny-input-radiogroup d-flex flex-wrap gap-2",
+    role = "radiogroup",
+    `aria-label` = "Mode",
+    option("chat", chat_mode_label, "comments", checked = TRUE),
+    option("world_bank", world_bank$label, "earth-americas")
+  )
+}
 model_input_id <- function(id) str_c(id, "_model")
 stats_output_id <- function(id) str_c(id, "_stats")
 
@@ -43,14 +67,14 @@ ui <- function(id) {
     enable_cancel = TRUE,
     # No file uploads for now (also hides the "+" button in the input)
     allow_attachments = FALSE,
+    # Plain chat or the World Bank data agent; switching starts a new conversation
+    toolbar_input = toolbar(mode_tabs(id), align = "left"),
     footer = tags$div(
       class = "d-flex flex-wrap align-items-center justify-content-center gap-2",
       # Last response's timings and tokens, on its own row (filled in by the server)
       if (show_response_stats) {
         tags$div(class = "w-100 text-center text-body-secondary", textOutput(stats_output_id(id), inline = TRUE))
       },
-      # Plain chat or the World Bank data agent; switching starts a new conversation
-      tagAppendAttributes(input_switch(mode_input_id(id), world_bank$label), class = "mb-0 me-2"),
       tags$label(`for` = model_input_id(id), class = "mb-0", "Model:"),
       # Compact select sized to the footer text; the server replaces this placeholder option with
       # the free model list
@@ -197,10 +221,10 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
   # Plain chat <-> World Bank data. A plain chat can't replay the agent's tool calls, so switching
   # starts a new conversation. The dropdown keeps the model if the new mode lists it.
   observeEvent(input[[mode_input_id(id)]], ignoreInit = TRUE, {
-    on <- isTRUE(input[[mode_input_id(id)]])
+    on <- identical(input[[mode_input_id(id)]], "world_bank")
     req(on != agent_mode())
     revert <- function(message) {
-      update_switch(mode_input_id(id), value = agent_mode(), session = session)
+      updateRadioButtons(session, mode_input_id(id), selected = if (agent_mode()) "world_bank" else "chat")
       showNotification(message, type = "warning", session = session)
       req(FALSE)
     }
@@ -231,7 +255,9 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
     pending_model <<- NULL
     use_client(new_client, model)
     updateSelectInput(session, model_input_id(id), choices = choices, selected = model)
-    chat$clear(messages = if (on) world_bank$greeting else greeting)
+    # Each mode's greeting (World Bank data mode's has clickable example questions)
+    chat$clear()
+    chat$set_greeting(if (on) world_bank$greeting else greeting)
     stats(NULL)
     log_info("Switched to {if (on) 'World Bank data' else 'chat'} mode with model {model}")
   })
