@@ -72,8 +72,7 @@ background <- new.env()
 #' or older than `max_age_days`, so the app can start (and show that it is downloading) instead of
 #' waiting about 30 seconds. `root` is the project root (box.path). Returns TRUE if one was started.
 #' @export
-start_wdi_download <- function(path = world_bank$cache_file, max_age_days = world_bank$cache_days,
-                               root = getwd()) {
+start_wdi_download <- function(path = world_bank$cache_file, max_age_days = world_bank$cache_days, root = getwd()) {
   if (is_fresh(path, max_age_days) || wdi_downloading()) {
     return(invisible(FALSE))
   }
@@ -84,7 +83,8 @@ start_wdi_download <- function(path = world_bank$cache_file, max_age_days = worl
       box::use(app / logic / wdi[load_wdi])
       invisible(load_wdi(path = path, max_age_days = max_age_days))
     },
-    args = list(root = root, path = path, max_age_days = max_age_days), wd = root
+    args = list(root = root, path = path, max_age_days = max_age_days),
+    wd = root
   )
   invisible(TRUE)
 }
@@ -100,14 +100,20 @@ wdi_downloading <- function() {
 #' `downloading()` (a background download is running; without a file that is an error).
 #' Errors when there is neither a download nor a cached file.
 #' @export
-load_wdi <- function(fetch = fetch_wdi, path = world_bank$cache_file, max_age_days = world_bank$cache_days,
-                     downloading = wdi_downloading) {
+load_wdi <- function(
+  fetch = fetch_wdi,
+  path = world_bank$cache_file,
+  max_age_days = world_bank$cache_days,
+  downloading = wdi_downloading
+) {
   cached <- test_file_exists(path)
   if (is_fresh(path, max_age_days)) {
     return(readRDS(path))
   }
   if (downloading()) {
-    if (!cached) stop("The World Bank data is still downloading")
+    if (!cached) {
+      stop("The World Bank data is still downloading")
+    }
     return(readRDS(path))
   }
   tryCatch(
@@ -122,7 +128,9 @@ load_wdi <- function(fetch = fetch_wdi, path = world_bank$cache_file, max_age_da
       panel
     },
     error = function(e) {
-      if (!cached) stop(e)
+      if (!cached) {
+        stop(e)
+      }
       log_warn("Could not refresh World Bank data, using the cached copy: {conditionMessage(e)}")
       readRDS(path)
     }

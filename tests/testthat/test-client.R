@@ -58,7 +58,11 @@ test_that("a rate-limited model streams the friendly message and its stats show 
 
   # ellmer records the failed request as a partial turn
   stats <- response_stats(
-    "Gemma (free)", "google/gemma:free", seconds = 8, turn = client$last_turn(), previous_turn = NULL
+    "Gemma (free)",
+    "google/gemma:free",
+    seconds = 8,
+    turn = client$last_turn(),
+    previous_turn = NULL
   )
   expect_false(stats$ok)
   expect_equal(format_stats(stats), "Gemma (free) · incomplete after 8.0 s")
@@ -75,9 +79,15 @@ test_that("a client whose model changes names the current model when it fails", 
 
   # Called the way shinychat does, splicing the message with !!!
   text <- collect_stream(client$stream_async(!!!list("Hi"), stream = "content"))
-  expect_equal(text, str_c("
+  expect_equal(
+    text,
+    str_c(
+      "
 
-", expected(error_messages$rate_limited, "Alpha (free)")))
+",
+      expected(error_messages$rate_limited, "Alpha (free)")
+    )
+  )
 })
 
 test_that("safe_stream() passes a reply through without extra chunks (e.g. a trailing TRUE)", {
@@ -100,7 +110,11 @@ test_that("response_stats() reads tokens from a new turn and flags an unchanged 
 
 test_that("response_stats() names the model that answered when it differs from the one requested", {
   answered <- function(model) {
-    AssistantTurn(list(ContentText("Hi")), json = list(model = model), tokens = c(input = 1, output = 2, cached_input = 0))
+    AssistantTurn(
+      list(ContentText("Hi")),
+      json = list(model = model),
+      tokens = c(input = 1, output = 2, cached_input = 0)
+    )
   }
 
   routed <- response_stats("Free Models Router", "openrouter/free", 1, answered("google/gemma-4-31b-it:free"), NULL)

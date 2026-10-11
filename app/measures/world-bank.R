@@ -4,55 +4,70 @@
 # commons reads the roxygen blocks: `@measure` marks a measure, each `@param` with a type code span is
 # an argument the model supplies, and `wdi` (no @param) is the connection to the data source of that
 # name, filled in by commons. commons also copies these functions' source into the agent's sandboxed R
-# session, so they must be self-contained: base R and `pkg::fn()` calls only, no box imports or
-# objects from the app.
+# session, so they must be self-contained: base R and packages imported with box::use(), no app
+# modules or objects from the app.
 #
 # `economies` is one semicolon-separated string because commons 0.1.1 only accepts arrays of enums as
 # measure arguments, and World Bank names contain commas ("Korea, Rep.").
+
+box::use(
+  checkmate[test_choice, test_data_frame, test_null, test_subset, test_true],
+  DBI[dbListFields, dbReadTable],
+  dplyr[
+    all_of, arrange, bind_rows, count, desc, filter, first, if_else, mutate, pull, rename_with,
+    row_number, select, slice_head, slice_max, summarise,
+  ],
+  duckplyr[methods_overwrite],
+  glue[glue],
+  stringr[fixed, str_flatten_comma, str_split_1, str_subset, str_to_lower, str_trim],
+)
+
+# Run the dplyr verbs on duckdb (duckplyr falls back to dplyr for what it can't translate),
+# without saving fallback reports to disk
+Sys.setenv(DUCKPLYR_FALLBACK_COLLECT = 0)
+suppressMessages(methods_overwrite())
 
 # Columns that aren't indicators
 wdi_id_columns <- c("country", "aggregate", "iso3c", "region", "income", "year")
 
 wdi_check_indicator <- function(wdi, indicator) {
-  indicators <- setdiff(DBI::dbListFields(wdi, "countries"), wdi_id_columns)
-  if (!indicator %in% indicators) {
-    stop(
-      "Unknown indicator '", indicator, "'. Use one of: ", paste(indicators, collapse = ", "), ".",
-      call. = FALSE
-    )
+  indicators <- setdiff(dbListFields(wdi, "countries"), wdi_id_columns)
+  if (!test_choice(indicator, indicators)) {
+    stop(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call. = FALSE)
   }
-  DBI::dbQuoteIdentifier(wdi, indicator)
 }
 
 # Non-missing values of `indicator` for the named countries or aggregates (World Bank names or ISO3
 # codes, any case), as columns economy, iso3c, year and the indicator. Errors on unknown names so the
 # model can correct them.
 wdi_economy_values <- function(wdi, indicator, economies) {
-  column <- wdi_check_indicator(wdi, indicator)
-  wanted <- trimws(strsplit(economies, ";", fixed = TRUE)[[1]])
-  wanted <- wanted[wanted != ""]
-  rows <- DBI::dbGetQuery(wdi, paste0(
-    "SELECT country AS economy, iso3c, year, ", column, " AS value FROM countries ",
-    "UNION ALL SELECT aggregate, iso3c, year, ", column, " FROM aggregates"
-  ))
-  known <- c(tolower(rows$economy), tolower(rows$iso3c))
-  unknown <- wanted[!tolower(wanted) %in% known]
-  if (length(unknown) > 0) {
+  wdi_check_indicator(wdi, indicator)
+  wanted <- str_subset(str_trim(str_split_1(economies, fixed(";"))), ".")
+  rows <- bind_rows(
+    dbReadTable(wdi, "countries") |> select(economy = country, iso3c, year, value = all_of(indicator)),
+    dbReadTable(wdi, "aggregates") |> select(economy = aggregate, iso3c, year, value = all_of(indicator))
+  )
+  known <- str_to_lower(c(rows$economy, rows$iso3c))
+  if (!test_subset(str_to_lower(wanted), known)) {
+    unknown <- wanted[!str_to_lower(wanted) %in% known]
     stop(
-      "No World Bank economy named ", paste(unknown, collapse = ", "), ". Use World Bank names ",
-      "(e.g. 'Korea, Rep.', 'Egypt, Arab Rep.', 'Turkiye') or ISO3 codes (e.g. 'KOR').",
+      glue(
+        "No World Bank economy named {str_flatten_comma(unknown)}. Use World Bank names ",
+        "(e.g. 'Korea, Rep.', 'Egypt, Arab Rep.', 'Turkiye') or ISO3 codes (e.g. 'KOR')."
+      ),
       call. = FALSE
     )
   }
-  keep <- (tolower(rows$economy) %in% tolower(wanted) | tolower(rows$iso3c) %in% tolower(wanted)) &
-    !is.na(rows$value)
-  rows <- rows[keep, ]
-  if (nrow(rows) == 0) {
-    stop("No ", indicator, " data for ", paste(wanted, collapse = ", "), ".", call. = FALSE)
+  rows <- rows |>
+    filter(
+      str_to_lower(economy) %in% str_to_lower(wanted) | str_to_lower(iso3c) %in% str_to_lower(wanted),
+      !is.na(value)
+    ) |>
+    arrange(economy, year) |>
+    rename_with(\(name) indicator, value)
+  if (!test_data_frame(rows, min.rows = 1)) {
+    stop(glue("No {indicator} data for {str_flatten_comma(wanted)}."), call. = FALSE)
   }
-  rows <- rows[order(rows$economy, rows$year), ]
-  names(rows)[names(rows) == "value"] <- indicator
-  rownames(rows) <- NULL
   rows
 }
 
@@ -73,10 +88,8 @@ wdi_economy_values <- function(wdi, indicator, economies) {
 #' @return One row per economy: economy, iso3c, year, and the indicator.
 #' @measure
 latest_values <- function(wdi, indicator, economies) {
-  rows <- wdi_economy_values(wdi, indicator, economies)
-  latest <- do.call(rbind, lapply(split(rows, rows$economy), function(df) df[which.max(df$year), ]))
-  rownames(latest) <- NULL
-  latest
+  wdi_economy_values(wdi, indicator, economies) |>
+    slice_max(year, n = 1, by = economy)
 }
 
 #' Yearly values of a World Bank indicator over time
@@ -96,12 +109,10 @@ latest_values <- function(wdi, indicator, economies) {
 #' @return One row per economy and year: economy, iso3c, year, and the indicator.
 #' @measure
 indicator_series <- function(wdi, indicator, economies, start_year = NULL, end_year = NULL) {
-  rows <- wdi_economy_values(wdi, indicator, economies)
-  in_range <- rows$year >= (if (is.null(start_year)) -Inf else start_year) &
-    rows$year <= (if (is.null(end_year)) Inf else end_year)
-  rows <- rows[in_range, ]
-  rownames(rows) <- NULL
-  rows
+  first_year <- if (test_null(start_year)) -Inf else start_year
+  last_year <- if (test_null(end_year)) Inf else end_year
+  wdi_economy_values(wdi, indicator, economies) |>
+    filter(year >= first_year, year <= last_year)
 }
 
 #' Countries ranked by a World Bank indicator
@@ -124,34 +135,42 @@ indicator_series <- function(wdi, indicator, economies, start_year = NULL, end_y
 #' @return rank, country, iso3c, region, year, and the indicator.
 #' @measure
 indicator_ranking <- function(wdi, indicator, year = NULL, top_n = 10, lowest_first = FALSE, region = NULL) {
-  column <- wdi_check_indicator(wdi, indicator)
-  values <- DBI::dbGetQuery(wdi, paste0(
-    "SELECT country, iso3c, region, year, ", column, " AS value FROM countries WHERE ", column, " IS NOT NULL"
-  ))
-  if (!is.null(region)) {
+  wdi_check_indicator(wdi, indicator)
+  values <- dbReadTable(wdi, "countries") |>
+    select(country, iso3c, region, year, value = all_of(indicator)) |>
+    filter(!is.na(value))
+  # (the arguments have the same names as columns)
+  wanted_region <- region
+  wanted_year <- year
+  if (!test_null(wanted_region)) {
     regions <- sort(unique(values$region))
-    if (!region %in% regions) {
-      stop("Unknown region '", region, "'. Use one of: ", paste(regions, collapse = ", "), ".", call. = FALSE)
+    if (!test_choice(wanted_region, regions)) {
+      stop(glue("Unknown region '{wanted_region}'. Use one of: {str_flatten_comma(regions)}."), call. = FALSE)
     }
-    values <- values[values$region == region, ]
+    values <- values |>
+      filter(region == wanted_region)
   }
-  if (nrow(values) == 0) {
-    stop("No data for ", indicator, ".", call. = FALSE)
+  if (!test_data_frame(values, min.rows = 1)) {
+    stop(glue("No data for {indicator}."), call. = FALSE)
   }
-  if (is.null(year)) {
-    counts <- table(values$year)
-    year <- as.integer(max(names(counts)[counts >= max(counts) / 2]))
+  if (test_null(wanted_year)) {
+    wanted_year <- values |>
+      count(year) |>
+      filter(n >= max(n) / 2) |>
+      pull(year) |>
+      max()
   }
-  values <- values[values$year == year, ]
-  if (nrow(values) == 0) {
-    stop("No countries report ", indicator, " for ", year, ".", call. = FALSE)
+  values <- values |>
+    filter(year == wanted_year)
+  if (!test_data_frame(values, min.rows = 1)) {
+    stop(glue("No countries report {indicator} for {wanted_year}."), call. = FALSE)
   }
-  values <- values[order(values$value, decreasing = !lowest_first), ]
-  values$rank <- seq_len(nrow(values))
-  names(values)[names(values) == "value"] <- indicator
-  ranked <- utils::head(values[c("rank", "country", "iso3c", "region", "year", indicator)], top_n)
-  rownames(ranked) <- NULL
-  ranked
+  values |>
+    arrange(if (lowest_first) value else desc(value)) |>
+    mutate(rank = row_number()) |>
+    select(rank, country, iso3c, region, year, value) |>
+    rename_with(\(name) indicator, value) |>
+    slice_head(n = top_n)
 }
 
 #' Compound annual growth rate of a World Bank indicator
@@ -171,26 +190,23 @@ indicator_ranking <- function(wdi, indicator, year = NULL, top_n = 10, lowest_fi
 #'   year is missing).
 #' @measure
 compound_growth <- function(wdi, indicator, economies, start_year, end_year) {
-  if (end_year <= start_year) {
+  if (!test_true(end_year > start_year)) {
     stop("end_year must be after start_year.", call. = FALSE)
   }
-  rows <- wdi_economy_values(wdi, indicator, economies)
-  growth <- do.call(rbind, lapply(split(rows, rows$economy), function(df) {
-    first <- df[[indicator]][df$year == start_year]
-    last <- df[[indicator]][df$year == end_year]
-    first <- if (length(first) == 1) first else NA_real_
-    last <- if (length(last) == 1) last else NA_real_
-    ok <- !is.na(first) && !is.na(last) && first > 0
-    data.frame(
-      economy = df$economy[1],
-      iso3c = df$iso3c[1],
+  years <- end_year - start_year
+  wdi_economy_values(wdi, indicator, economies) |>
+    rename_with(\(name) "value", all_of(indicator)) |>
+    summarise(
+      iso3c = first(iso3c),
+      # first() of no rows is NA: that year is missing
+      start_value = first(value[year == start_year]),
+      end_value = first(value[year == end_year]),
+      .by = economy
+    ) |>
+    mutate(
       start_year = start_year,
-      start_value = first,
       end_year = end_year,
-      end_value = last,
-      annual_growth_pct = if (ok) 100 * ((last / first)^(1 / (end_year - start_year)) - 1) else NA_real_
-    )
-  }))
-  rownames(growth) <- NULL
-  growth
+      annual_growth_pct = if_else(start_value > 0, 100 * ((end_value / start_value)^(1 / years) - 1), NA_real_)
+    ) |>
+    select(economy, iso3c, start_year, start_value, end_year, end_value, annual_growth_pct)
 }

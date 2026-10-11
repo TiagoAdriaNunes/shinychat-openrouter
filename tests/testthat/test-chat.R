@@ -70,7 +70,9 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
     function(input, output, session) {
       result <- chat$server(
         "chat",
-        models = fake_models, agent_models = fake_tool_models, world_bank_data = world_bank_data
+        models = fake_models,
+        agent_models = fake_tool_models,
+        world_bank_data = world_bank_data
       )
     },
     {
@@ -109,7 +111,8 @@ test_that("World Bank data mode waits while the data is downloading, then turns 
     function(input, output, session) {
       result <- chat$server(
         "chat",
-        models = fake_models, agent_models = fake_tool_models,
+        models = fake_models,
+        agent_models = fake_tool_models,
         world_bank_data = function() if (downloading) NULL else fake_panel(),
         data_loading = function() downloading
       )
@@ -144,7 +147,9 @@ test_that("World Bank data mode stays off when the data can't be loaded", {
     function(input, output, session) {
       result <- chat$server(
         "chat",
-        models = fake_models, agent_models = fake_tool_models, world_bank_data = function() NULL
+        models = fake_models,
+        agent_models = fake_tool_models,
+        world_bank_data = function() NULL
       )
     },
     {
@@ -178,7 +183,9 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
     function(input, output, session) {
       result <- chat$server(
         "chat",
-        models = fake_models, agent_models = fake_tool_models, world_bank_data = function() fake_panel()
+        models = fake_models,
+        agent_models = fake_tool_models,
+        world_bank_data = function() fake_panel()
       )
     },
     {

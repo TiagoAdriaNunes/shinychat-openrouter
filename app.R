@@ -32,6 +32,8 @@ check_api_key()
 options(commons.context_cache = world_bank$context_cache)
 start_wdi_download()
 panel <- wdi_panel()
-if (!test_null(panel)) prewarm_agent(panel)
+if (!test_null(panel)) {
+  prewarm_agent(panel)
+}
 
 shinyApp(main$ui(), main$server)

@@ -14,7 +14,8 @@ box::use(
 # Both icons get the same centred square so they line up; the toggle is drawn at 1.3em of its font-size.
 #' @export
 chat_theme <- do.call(commons_theme, theme_settings) |>
-  bs_add_rules("
+  bs_add_rules(
+    "
     .shiny-chat-page-toolbar-global .bslib-toolbar > .btn-link,
     .shiny-chat-page-toolbar-global .bslib-toolbar > bslib-input-dark-mode {
       display: inline-flex;
@@ -33,4 +34,5 @@ chat_theme <- do.call(commons_theme, theme_settings) |>
     .shiny-chat-page-toolbar-global .bslib-toolbar > bslib-input-dark-mode {
       font-size: 1.1rem;
     }
-  ")
+  "
+  )
