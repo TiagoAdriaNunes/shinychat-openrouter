@@ -134,7 +134,7 @@ flyctl deploy --ha=false
 ```
 
 - `--ha=false` keeps a single machine, which Shiny needs because each session is tied to one machine.
-- `fly.toml` uses a `shared-cpu-1x` machine with 1 GB of RAM in `gru` (São Paulo) that stops when idle and starts again on the next visit. Change `primary_region`, the `[[vm]]` block or `min_machines_running` to suit you.
+- `fly.toml` uses a `shared-cpu-2x` machine (2 shared CPUs) with 2 GB of RAM in `gru` (São Paulo) that stops when idle and starts again on the next visit. Change `primary_region`, the `[[vm]]` block or `min_machines_running` to suit you.
 - The first build takes a few minutes while the R packages are installed. The build also downloads the World Bank data into the image, so a cold machine doesn't wait for it.
 - World Bank data mode needs the commons OS sandbox (seccomp plus Landlock or user namespaces), which a modern Linux kernel such as Fly.io's provides. If it isn't available, the mode shows "unavailable" and the log says why.
 
