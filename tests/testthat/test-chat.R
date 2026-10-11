@@ -100,6 +100,43 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
   )
 })
 
+test_that("World Bank data mode waits while the data is downloading, then turns on by itself", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  downloading <- TRUE
+
+  testServer(
+    function(input, output, session) {
+      result <- chat$server(
+        "chat",
+        models = fake_models, agent_models = fake_tool_models,
+        world_bank_data = function() if (downloading) NULL else fake_panel(),
+        data_loading = function() downloading
+      )
+    },
+    {
+      session$setInputs(chat_model = "b/beta:free", chat_mode = "chat")
+      session$setInputs(chat_mode = "world_bank")
+      session$elapse(1000)
+      expect_false(result$world_bank())
+
+      # Picking Chat again cancels the wait: the mode stays off after the download ends
+      session$setInputs(chat_mode = "chat")
+      downloading <<- FALSE
+      session$elapse(1000)
+      expect_false(result$world_bank())
+
+      downloading <<- TRUE
+      session$setInputs(chat_mode = "world_bank")
+      expect_false(result$world_bank())
+      downloading <<- FALSE
+      session$elapse(1000)
+      expect_true(result$world_bank())
+      expect_equal(result$model(), "a/alpha:free")
+    }
+  )
+})
+
 test_that("World Bank data mode stays off when the data can't be loaded", {
   local_envvar(OPENROUTER_API_KEY = "test-key")
 

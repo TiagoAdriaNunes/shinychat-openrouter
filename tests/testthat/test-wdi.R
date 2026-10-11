@@ -45,6 +45,19 @@ test_that("load_wdi() falls back to a stale file when the download fails, and er
   expect_equal(load_wdi(fetch = failing, path = path, max_age_days = 0), saved)
 })
 
+test_that("load_wdi() doesn't download while a background download is running", {
+  path <- local_tempfile(fileext = ".rds")
+  fetch <- function() stop("must not download")
+  running <- function() TRUE
+
+  expect_error(load_wdi(fetch = fetch, path = path, max_age_days = 7, downloading = running), "still downloading")
+
+  # An old copy is used meanwhile
+  saved <- split_panel(fake_wdi_raw())
+  saveRDS(saved, path)
+  expect_equal(load_wdi(fetch = fetch, path = path, max_age_days = 0, downloading = running), saved)
+})
+
 test_that("wdi_panel() returns NULL instead of an error", {
   expect_null(wdi_panel(load = function() stop("no network")))
   expect_true(is.list(wdi_panel(load = function() split_panel(fake_wdi_raw()))))

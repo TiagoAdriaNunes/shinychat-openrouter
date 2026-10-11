@@ -13,7 +13,7 @@ box::use(
   app / logic / checks[check_api_key, check_model],
   app / logic / agent[prewarm_agent],
   app / logic / config[fallback_model, world_bank],
-  app / logic / wdi[wdi_panel],
+  app / logic / wdi[start_wdi_download, wdi_panel],
   app / main,
 )
 
@@ -25,10 +25,12 @@ log_info("Starting shinychat-openrouter app")
 check_model(fallback_model)
 check_api_key()
 
-# Load the World Bank data (from the disk cache, or a ~30 s download) and build the agent's context
-# index now, so turning on World Bank data mode and the first question are quick. If loading fails,
-# the mode retries when it is turned on.
+# Load the World Bank data from the disk cache and build the agent's context index now, so turning
+# on World Bank data mode and the first question are quick. A missing or old cache is downloaded
+# (~30 s) in the background instead of delaying the start: an old copy is used meanwhile, and with
+# no copy World Bank data mode shows that it is downloading and turns on when it is done.
 options(commons.context_cache = world_bank$context_cache)
+start_wdi_download()
 panel <- wdi_panel()
 if (!test_null(panel)) prewarm_agent(panel)
 

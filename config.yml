@@ -86,6 +86,9 @@ default:
       <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
     unavailable: "World Bank data isn't available right now. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
+    # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
+    # the first start. The mode turns on when the download ends; picking Chat cancels the wait.
+    loading: "Downloading the World Bank data, about 30 seconds. This mode turns on by itself when it is ready."
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
     lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
