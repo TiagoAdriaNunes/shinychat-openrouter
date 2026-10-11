@@ -55,8 +55,14 @@ dictionary_file <- function(panel) {
       ),
       list(
         name = "aggregates",
-        description = "One row per World Bank aggregate and year: World, regions, income groups, Euro area, OECD members and other groupings.",
-        details = "Computed by the World Bank (weighted where appropriate), so use these instead of combining countries.",
+        description = str_c(
+          "One row per World Bank aggregate and year: World, regions, income groups, Euro area, OECD members ",
+          "and other groupings."
+        ),
+        details = str_c(
+          "Computed by the World Bank (weighted where appropriate), so use these instead of combining ",
+          "countries."
+        ),
         columns = c(
           list(
             list(name = "aggregate", description = "Aggregate name, e.g. 'World', 'Euro area', 'High income'."),
@@ -179,7 +185,8 @@ reasoning_args <- function(effort) {
 }
 
 #' commons agent on an OpenRouter model, answering from `source` (a wdi_source()) with the trusted
-#' measures in `world_bank$measure_files` and the notes in `world_bank$context_files`. Like new_client(), failed requests become a chat message naming `label`.
+#' measures in `world_bank$measure_files` and the notes in `world_bank$context_files`. Like new_client(),
+#' failed requests become a chat message naming `label`.
 #' @export
 new_agent <- function(model, label, source) {
   # commons decides at construction whether its R session can be sandboxed; without a sandbox it
