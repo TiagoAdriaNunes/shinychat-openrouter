@@ -22,19 +22,40 @@ fake_catalogue <- list(data = list(
   fake_model("p/paid", "Paid", prompt = "0.000001", completion = "0.000002", intelligence = 99, tools = TRUE),
   fake_model("m/music", "Music (free)", output = list("text", "audio")),
   # Listed in excluded_models in config.yml
-  fake_model("thinkingmachines/inkling:free", "Inkling (free)", intelligence = 50)
+  fake_model("thinkingmachines/inkling:free", "Inkling (free)", intelligence = 50),
+  # Listed in low_priority_models in config.yml
+  fake_model("inclusionai/ling-3.1-flash", "Ling", intelligence = 90, tools = TRUE)
 ))
 
-# By intelligence (highest first), then unscored by newest
+# By intelligence (highest first), then unscored by newest, then low priority
 fake_models <- c(
   "Beta (free)" = "b/beta:free",
   "Alpha (free)" = "a/alpha:free",
   "Gamma (free)" = "c/gamma:free",
-  "Delta (free)" = "d/delta:free"
+  "Delta (free)" = "d/delta:free",
+  "Ling" = "inclusionai/ling-3.1-flash"
 )
 
 # The fake_models that support tool calling, in the same order
 fake_tool_models <- c(
   "Alpha (free)" = "a/alpha:free",
-  "Gamma (free)" = "c/gamma:free"
+  "Gamma (free)" = "c/gamma:free",
+  "Ling" = "inclusionai/ling-3.1-flash"
 )
+
+# Mock for httr2::local_mocked_responses(): the catalogue, and for <models_url>/<id>/endpoints one
+# provider with that model's `uptime` (named by model id, 100 when not given; NULL for no figure,
+# NA for a failed lookup)
+fake_openrouter <- function(catalogue = fake_catalogue, uptime = list()) {
+  function(req) {
+    if (!stringr::str_ends(req$url, "/endpoints")) {
+      return(httr2::response_json(body = catalogue))
+    }
+    id <- stringr::str_match(req$url, "/models/(.+)/endpoints$")[, 2]
+    value <- if (id %in% names(uptime)) uptime[[id]] else 100
+    if (isTRUE(is.na(value))) {
+      return(httr2::response(status_code = 500))
+    }
+    httr2::response_json(body = list(data = list(endpoints = list(list(uptime_last_30m = value)))))
+  }
+}

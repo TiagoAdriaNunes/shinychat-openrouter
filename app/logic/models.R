@@ -1,15 +1,17 @@
 box::use(
   cachem[cache_mem],
+  checkmate[test_number],
   httr2[req_perform, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
   purrr[keep, map_chr, map_dbl, set_names],
+  stringr[str_c, str_flatten],
 )
 
 box::use(
   . / config[
-    excluded_models, fallback_model, fallback_model_label, models_cache_seconds, models_url,
-    request_timeout_seconds,
+    excluded_models, fallback_model, fallback_model_label, low_priority_models, min_uptime_30m,
+    models_cache_seconds, models_url, request_timeout_seconds,
   ],
 )
 
@@ -33,14 +35,54 @@ intelligence <- function(model) {
   if (is.numeric(score) && length(score) == 1) score else NA_real_
 }
 
+get_json <- function(url) {
+  request(url) |>
+    req_timeout(request_timeout_seconds) |>
+    req_perform() |>
+    resp_body_json()
+}
+
+# Share (%) of requests the model's best provider answered in the last 30 minutes, or NA when
+# OpenRouter has no figure (no requests in that time) or the lookup fails
+uptime_30m <- function(id) {
+  tryCatch(
+    {
+      endpoints <- get_json(str_c(models_url, "/", id, "/endpoints"))$data$endpoints
+      uptime <- map_dbl(endpoints, \(e) {
+        if (test_number(e$uptime_last_30m)) e$uptime_last_30m else NA_real_
+      })
+      if (all(is.na(uptime))) NA_real_ else max(uptime, na.rm = TRUE)
+    },
+    error = function(e) {
+      log_warn("Could not fetch the uptime of {id}: {conditionMessage(e)}")
+      NA_real_
+    }
+  )
+}
+
+# Models that were up for at least `min_uptime_30m` percent of the last 30 minutes. All of them if
+# none passes (e.g. the uptime lookups failed): better a list to try than the fallback router.
+keep_reliable <- function(models) {
+  if (!test_number(min_uptime_30m)) {
+    return(models)
+  }
+  reliable <- keep(models, \(m) isTRUE(uptime_30m(m$id) >= min_uptime_30m))
+  if (length(reliable) == 0) {
+    log_warn("No free model has {min_uptime_30m}% uptime in the last 30 minutes; listing all of them")
+    return(models)
+  }
+  dropped <- setdiff(map_chr(models, "id"), map_chr(reliable, "id"))
+  if (length(dropped) > 0) {
+    log_info("Left out for uptime below {min_uptime_30m}% (or unknown): {str_flatten(dropped, ', ')}")
+  }
+  reliable
+}
+
 #' Fetch free text models from OpenRouter, uncached (only those supporting tool calling if
 #' `tools_only`). Errors if the request fails or none are found.
 #' @export
 fetch_free_models <- function(tools_only = FALSE) {
-  models <- request(models_url) |>
-    req_timeout(request_timeout_seconds) |>
-    req_perform() |>
-    resp_body_json()
+  models <- get_json(models_url)
 
   free <- keep(models$data, \(m) {
     is_free(m) && is_text_only(m) && !m$id %in% excluded_models && (!tools_only || supports_tools(m))
@@ -48,13 +90,15 @@ fetch_free_models <- function(tools_only = FALSE) {
   if (length(free) == 0) {
     stop("No free text models in the response")
   }
+  free <- keep_reliable(free)
 
-  # Most intelligent first (the chat starts with the first one); unscored models after, newest first
+  # Most intelligent first (the chat starts with the first one); unscored models after, newest first;
+  # low priority models last
   score <- map_dbl(free, intelligence)
   created <- map_dbl(free, \(m) if (is.numeric(m$created) && length(m$created) == 1) m$created else 0)
   ids <- set_names(map_chr(free, "id"), map_chr(free, "name"))
   log_info("Fetched {length(ids)} free OpenRouter models{if (tools_only) ' with tool calling' else ''}")
-  ids[order(-score, -created)]
+  ids[order(ids %in% low_priority_models, -score, -created)]
 }
 
 # Shared by all sessions in this R process. memoise only stores returned values,

@@ -48,6 +48,16 @@ default:
     # How long the fetched model list is reused before asking OpenRouter again
     models_cache_seconds: 3600
     request_timeout_seconds: 10
+    # Only models whose provider answered at least this share (%) of requests in the last 30 minutes
+    # are listed (`uptime_last_30m` from <models_url>/<model id>/endpoints, no API key needed).
+    # Models with no figure (no requests in that time, or the lookup failed) are left out too.
+    # If no model passes, all are listed. Empty to skip the check.
+    min_uptime_30m: 100
+    # Listed last, whatever their intelligence score, so the chat doesn't start with them.
+    # Uptime doesn't count rate limiting (HTTP 429), so add models that are often rate limited here.
+    low_priority_models:
+      # 429 "upstream_provider_shared_pool": Novita's free capacity is shared by all OpenRouter users
+      - "inclusionai/ling-3.1-flash"
     # Free models hidden from the dropdown because they don't work as a plain chatbot.
     # The model list has no flag for this, so check new models with a real request.
     excluded_models:
