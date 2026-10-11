@@ -20,5 +20,6 @@ test_that("config.yml provides every text setting as a non-empty string", {
 test_that("config.yml provides positive numeric timings and a theme", {
   expect_gt(config$models_cache_seconds, 0)
   expect_gt(config$request_timeout_seconds, 0)
+  expect_gt(config$min_uptime_30m, 0)
   expect_true(is.list(config$theme_settings) && length(config$theme_settings) > 0)
 })

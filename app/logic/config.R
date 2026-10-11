@@ -52,6 +52,12 @@ request_timeout_seconds <- settings$openrouter$request_timeout_seconds
 excluded_models <- as.character(unlist(settings$openrouter$excluded_models))
 
 #' @export
+min_uptime_30m <- settings$openrouter$min_uptime_30m
+
+#' @export
+low_priority_models <- as.character(unlist(settings$openrouter$low_priority_models))
+
+#' @export
 world_bank <- settings$world_bank
 
 #' @export

@@ -2,6 +2,7 @@ box::use(
   cachem[cache_mem],
   httr2[local_mocked_responses, response, response_json],
   memoise[memoise],
+  stringr[str_ends],
   testthat[expect_equal, test_that],
 )
 
@@ -9,16 +10,36 @@ box::use(
   app / logic / models[fetch_free_models, free_models],
 )
 
-test_that("free_models() keeps free text-only, non-excluded models, most intelligent first", {
-  local_mocked_responses(function(req) response_json(body = fake_catalogue))
+test_that("free_models() keeps free text-only, non-excluded models, most intelligent first, low priority last", {
+  local_mocked_responses(fake_openrouter())
 
   expect_equal(free_models(fetch = fetch_free_models), fake_models)
 })
 
 test_that("free_models(tools_only = TRUE) keeps only models that support tool calling", {
-  local_mocked_responses(function(req) response_json(body = fake_catalogue))
+  local_mocked_responses(fake_openrouter())
 
   expect_equal(free_models(fetch = fetch_free_models, tools_only = TRUE), fake_tool_models)
+})
+
+test_that("free_models() leaves out models without full uptime in the last 30 minutes", {
+  # Below the minimum, no figure, and a failed lookup
+  local_mocked_responses(fake_openrouter(
+    uptime = list("b/beta:free" = 99.5, "c/gamma:free" = NULL, "d/delta:free" = NA)
+  ))
+
+  expect_equal(
+    free_models(fetch = fetch_free_models),
+    c("Alpha (free)" = "a/alpha:free", "Ling" = "inclusionai/ling-3.1-flash")
+  )
+})
+
+test_that("free_models() lists every model when none has full uptime", {
+  uptime <- rep(list(50), length(fake_models))
+  names(uptime) <- fake_models
+  local_mocked_responses(fake_openrouter(uptime = uptime))
+
+  expect_equal(free_models(fetch = fetch_free_models), fake_models)
 })
 
 test_that("free_models() falls back to the fallback model when the request fails", {
@@ -35,9 +56,11 @@ test_that("free_models() falls back when the response has no free text models", 
 
 test_that("the memoised fetch reuses the list until it expires", {
   calls <- 0
+  openrouter <- fake_openrouter()
   local_mocked_responses(function(req) {
-    calls <<- calls + 1
-    response_json(body = fake_catalogue)
+    # Count catalogue requests, not the uptime lookups each one triggers
+    if (!str_ends(req$url, "/endpoints")) calls <<- calls + 1
+    openrouter(req)
   })
   cached <- memoise(fetch_free_models, cache = cache_mem(max_age = 1))
 
@@ -52,8 +75,9 @@ test_that("the memoised fetch reuses the list until it expires", {
 
 test_that("the memoised fetch does not cache failures", {
   status <- 500
+  openrouter <- fake_openrouter()
   local_mocked_responses(function(req) {
-    if (status == 500) response(status_code = 500) else response_json(body = fake_catalogue)
+    if (status == 500) response(status_code = 500) else openrouter(req)
   })
   cached <- memoise(fetch_free_models, cache = cache_mem(max_age = 3600))
 
