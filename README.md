@@ -41,7 +41,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 shiny::runApp()
 ```
 
-The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid. It also loads the World Bank data: the first run downloads it (about 30 seconds) to `cache/wdi.rds`, which is reused for a week.
+The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid. It also loads the World Bank data from `cache/wdi.rds`, which is reused for a week. When that file is missing or older, the app starts right away and downloads it in the background (about 30 seconds); World Bank data mode shows a loading message until it is ready.
 
 ## Test
 
@@ -50,6 +50,27 @@ Rscript tests/testthat.R
 ```
 
 Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()` and the World Bank data with a small fake panel, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
+
+## Format and lint
+
+Code is formatted with [Air](https://posit-dev.github.io/air/) (settings in `.air.toml`). In VS Code or Positron, install the [Air extension](https://marketplace.visualstudio.com/items?itemName=Posit.air-vscode) and add this to `.vscode/settings.json` (the folder is not in git) to format R files when you save them:
+
+```json
+{
+  "[r]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "Posit.air-vscode"
+  }
+}
+```
+
+Code is checked with [lintr](https://lintr.r-lib.org/) (settings in `.lintr`). In the R console:
+
+```r
+lintr::lint_dir(".")
+```
+
+lintr is only a development tool, so it is listed in `dependencies.R` for renv to record it in `renv.lock`.
 
 ## Configuration
 
