@@ -3,8 +3,9 @@ box::use(
   checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
   shiny[
-    getDefaultReactiveDomain, icon, observeEvent, reactive, reactiveVal, renderText, req,
-    showNotification, tagList, tags, textOutput, updateRadioButtons, updateSelectInput,
+    getDefaultReactiveDomain, icon, invalidateLater, observe, observeEvent, reactive, reactiveVal,
+    removeNotification, renderText, req, showNotification, tagList, tags, textOutput,
+    updateRadioButtons, updateSelectInput,
   ],
   shinychat[chat_server, page_chat],
   stringr[str_c, str_detect],
@@ -19,7 +20,7 @@ box::use(
   .. / logic / client[format_stats, new_client, response_stats],
   .. / logic / models[free_models],
   .. / logic / theme[chat_theme],
-  .. / logic / wdi[wdi_panel],
+  .. / logic / wdi[wdi_downloading, wdi_panel],
 )
 
 external_link <- function(href, ...) {
@@ -111,12 +112,14 @@ ui <- function(id) {
 # Needs OPENROUTER_API_KEY in the environment (e.g. in ~/.Renviron).
 # `models` is a named character vector of allowed models (label = name, value = id) for plain chat;
 # `agent_models` the same for World Bank data mode (models with tool calling). `world_bank_data`
-# returns the World Bank panel or NULL, and is only called when that mode is first turned on.
+# returns the World Bank panel or NULL, and is only called when that mode is first turned on;
+# `data_loading` returns TRUE while that data is still downloading in the background.
 # Returns a list of reactives: `model` (id of the model in use), `world_bank` (TRUE in World Bank
 # data mode) and `stats` (last response's stats or NULL).
 #' @export
 server <- function(id, models = free_models(), agent_models = free_models(tools_only = TRUE),
-                   world_bank_data = wdi_panel, session = getDefaultReactiveDomain()) {
+                   world_bank_data = wdi_panel, data_loading = wdi_downloading,
+                   session = getDefaultReactiveDomain()) {
   input <- session$input
   output <- session$output
   # Start with the first model: the most intelligent one (or the fallback if the list couldn't be fetched)
@@ -220,9 +223,7 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
 
   # Plain chat <-> World Bank data. A plain chat can't replay the agent's tool calls, so switching
   # starts a new conversation. The dropdown keeps the model if the new mode lists it.
-  observeEvent(input[[mode_input_id(id)]], ignoreInit = TRUE, {
-    on <- identical(input[[mode_input_id(id)]], "world_bank")
-    req(on != agent_mode())
+  switch_mode <- function(on) {
     revert <- function(message) {
       updateRadioButtons(session, mode_input_id(id), selected = if (agent_mode()) "world_bank" else "chat")
       showNotification(message, type = "warning", session = session)
@@ -260,6 +261,40 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
     chat$set_greeting(if (on) world_bank$greeting else greeting)
     stats(NULL)
     log_info("Switched to {if (on) 'World Bank data' else 'chat'} mode with model {model}")
+  }
+
+  # World Bank data mode picked while the data is still downloading (e.g. the app's first start):
+  # a spinner message stays up and the mode turns on when the download ends
+  waiting <- reactiveVal(FALSE)
+  loading_id <- str_c(id, "_wdi_loading")
+  stop_waiting <- function() {
+    waiting(FALSE)
+    removeNotification(loading_id, session = session)
+  }
+  observe({
+    req(waiting())
+    if (data_loading()) {
+      invalidateLater(1000, session)
+    } else {
+      stop_waiting()
+      switch_mode(TRUE)
+    }
+  })
+
+  observeEvent(input[[mode_input_id(id)]], ignoreInit = TRUE, {
+    on <- identical(input[[mode_input_id(id)]], "world_bank")
+    # Picking Chat again cancels the wait
+    if (!on && waiting()) stop_waiting()
+    req(on != agent_mode(), !waiting())
+    if (on && test_null(source) && data_loading()) {
+      waiting(TRUE)
+      showNotification(
+        tagList(tags$span(class = "spinner-border spinner-border-sm me-2", role = "status"), world_bank$loading),
+        id = loading_id, duration = NULL, closeButton = FALSE, session = session
+      )
+      req(FALSE)
+    }
+    switch_mode(on)
   })
 
   # Model request failures are handled (and logged) by the client; this catches anything else.
