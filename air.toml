@@ -1,0 +1,8 @@
+# Air, the R formatter: https://posit-dev.github.io/air/
+# Format everything with `air format .`; check without changing files with `air format . --check`.
+[format]
+line-width = 120
+indent-width = 2
+indent-style = "space"
+# box::use() blocks are left as written: Air would split module paths like `. / config[...]` across lines
+skip = ["use"]

@@ -141,7 +141,9 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
         }
         if (!looked_up && is_tool_request(chunk)) {
           looked_up <- TRUE
-          for (text in held) yield(text)
+          for (text in held) {
+            yield(text)
+          }
         }
         if (looked_up || is_thinking(chunk)) {
           yield(chunk)

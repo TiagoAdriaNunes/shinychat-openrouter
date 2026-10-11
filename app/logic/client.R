@@ -45,7 +45,9 @@ error_message <- function(cnd, model) {
 safe_stream <- async_generator(function(stream, model) {
   failed <- NULL
   tryCatch(
-    for (chunk in await_each(stream)) yield(chunk),
+    for (chunk in await_each(stream)) {
+      yield(chunk)
+    },
     error = function(e) failed <<- e
   )
   if (!test_null(failed)) {
@@ -101,8 +103,10 @@ response_stats <- function(model, model_id, seconds, turn, previous_turn) {
     stats$output_tokens <- turn@tokens[["output"]]
     # OpenRouter's response names the model that answered; providers may append a version suffix
     answered <- turn@json$model
-    if (test_string(answered, min.chars = 1) &&
-      !str_starts(base_model_id(answered), fixed(base_model_id(model_id)))) {
+    if (
+      test_string(answered, min.chars = 1) &&
+        !str_starts(base_model_id(answered), fixed(base_model_id(model_id)))
+    ) {
       stats$answered_by <- answered
     }
   }

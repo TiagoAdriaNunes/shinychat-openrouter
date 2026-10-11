@@ -174,7 +174,9 @@ default:
       - indicator_series(indicator, economies, start_year?, end_year?): values over time.
       - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
       - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
+      - country_profile(economy, year?): one country's latest value of every indicator and its rank among countries ("Brazil's worst indicator", "overview of India").
       `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
+      In run_r, pipe with |> (never %>%) and load a package before using its functions, e.g. library(dplyr).
       State the year of every figure.
       Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.
 

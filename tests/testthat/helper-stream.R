@@ -13,7 +13,9 @@ collect_stream <- function(stream, timeout = 10) {
         out <<- c(out, chunk)
       } else if (inherits(chunk, "ellmer::ContentText")) {
         out <<- c(out, chunk@text)
-      } else if (!inherits(chunk, c("ellmer::ContentThinking", "ellmer::ContentToolRequest", "ellmer::ContentToolResult"))) {
+      } else if (
+        !inherits(chunk, c("ellmer::ContentThinking", "ellmer::ContentToolRequest", "ellmer::ContentToolResult"))
+      ) {
         stop("Unexpected stream chunk of class ", stringr::str_flatten(class(chunk), "/"))
       }
     }
@@ -27,8 +29,14 @@ collect_stream <- function(stream, timeout = 10) {
     }
   )
   deadline <- Sys.time() + timeout
-  while (!done && Sys.time() < deadline) later::run_now(0.05)
-  if (!checkmate::test_null(failure)) stop(failure)
-  if (!done) stop("Stream did not finish in time")
+  while (!done && Sys.time() < deadline) {
+    later::run_now(0.05)
+  }
+  if (!checkmate::test_null(failure)) {
+    stop(failure)
+  }
+  if (!done) {
+    stop("Stream did not finish in time")
+  }
   stringr::str_flatten(out)
 }

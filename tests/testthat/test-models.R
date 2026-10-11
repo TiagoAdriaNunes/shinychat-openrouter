@@ -59,7 +59,9 @@ test_that("the memoised fetch reuses the list until it expires", {
   openrouter <- fake_openrouter()
   local_mocked_responses(function(req) {
     # Count catalogue requests, not the uptime lookups each one triggers
-    if (!str_ends(req$url, "/endpoints")) calls <<- calls + 1
+    if (!str_ends(req$url, "/endpoints")) {
+      calls <<- calls + 1
+    }
     openrouter(req)
   })
   cached <- memoise(fetch_free_models, cache = cache_mem(max_age = 1))

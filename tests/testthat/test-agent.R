@@ -1,4 +1,10 @@
 box::use(
+  commons[semantic_layer],
+  coro[async_generator, await, yield],
+  DBI[dbConnect, dbDisconnect, dbWriteTable],
+  duckdb[duckdb],
+  ellmer[AssistantTurn, ContentText, ContentToolRequest, ContentToolResult, stream_controller, UserTurn],
+  promises[promise_resolve],
   purrr[keep],
   stringr[fixed, str_c, str_replace_all],
   testthat[expect_equal, expect_error, expect_false, expect_message, expect_s3_class, expect_true, test_that],
@@ -9,31 +15,52 @@ box::use(
   app / logic / agent[agent_instructions, ground_agent, grounded_stream, has_lookup, new_agent, reasoning_args, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
+  app / measures / analysis[country_profile],
+  app / measures / `world-bank`[compound_growth, indicator_ranking, indicator_series, latest_values],
 )
 
 panel <- split_panel(fake_wdi_raw())
 panel$downloaded <- as.Date("2026-10-08")
 
-# The measures file, loaded on its own like commons does (it isn't a box module)
+# The measures file as commons reads it (by path)
 measures_file <- file.path("..", "..", "app", "measures", "world-bank.R")
-measures <- new.env()
-sys.source(measures_file, envir = measures)
 
 # The `wdi` connection commons passes to the measures: the panel's tables in duckdb
 local_wdi <- function(env = parent.frame()) {
-  con <- DBI::dbConnect(duckdb::duckdb())
-  DBI::dbWriteTable(con, "countries", panel$countries)
-  DBI::dbWriteTable(con, "aggregates", panel$aggregates)
-  defer(DBI::dbDisconnect(con, shutdown = TRUE), envir = env)
+  con <- dbConnect(duckdb())
+  dbWriteTable(con, "countries", panel$countries)
+  dbWriteTable(con, "aggregates", panel$aggregates)
+  defer(dbDisconnect(con, shutdown = TRUE), envir = env)
   con
 }
 
 test_that("commons reads the four measures from the measures file", {
-  expect_message(print(commons::semantic_layer(measures_file)), "4 measures")
+  expect_message(print(semantic_layer(measures_file)), "4 measures")
+})
+
+test_that("commons reads every measure in the measures directory", {
+  expect_message(print(semantic_layer(dirname(measures_file))), "5 measures")
+})
+
+test_that("country_profile() gives each indicator's latest value and rank among countries", {
+  wdi <- local_wdi()
+  profile <- country_profile(wdi, "bra")
+  # Indicators without data are left out; Brazil's latest GDP is 2021 (2022 is missing)
+  expect_equal(profile$indicator, c("gdp_usd", "inflation_pct"))
+  expect_equal(profile$year, c(2021, 2022))
+  expect_equal(profile$value, c(121, 9))
+  expect_equal(profile$rank_highest, c(2, 1))
+  # Chile has no 2022 inflation, so only two countries are ranked
+  expect_equal(profile$countries_ranked, c(3, 2))
+
+  in_2020 <- country_profile(wdi, "Brazil", year = 2020)
+  expect_equal(in_2020$value, c(100, 3))
+  expect_error(country_profile(wdi, "World"), "No World Bank country named World")
+  expect_error(country_profile(wdi, "Brazil", year = 1990), "No data for Brazil in 1990")
 })
 
 test_that("latest_values() gives each economy's most recent value, by name or ISO3 code in any case", {
-  latest <- measures$latest_values(local_wdi(), "gdp_usd", "brazil; KOR ;World;")
+  latest <- latest_values(local_wdi(), "gdp_usd", "brazil; KOR ;World;")
 
   expect_equal(latest$economy, c("Brazil", "Korea, Rep.", "World"))
   expect_equal(latest$year, c(2021L, 2022L, 2022L))
@@ -42,13 +69,13 @@ test_that("latest_values() gives each economy's most recent value, by name or IS
 
 test_that("unknown economies, indicators and missing data are errors the model can act on", {
   wdi <- local_wdi()
-  expect_error(measures$latest_values(wdi, "gdp_usd", "Brazil; South Korea"), "South Korea.*ISO3")
-  expect_error(measures$latest_values(wdi, "happiness", "Brazil"), "Unknown indicator 'happiness'")
-  expect_error(measures$latest_values(wdi, "gini", "Brazil"), "No gini data for Brazil")
+  expect_error(latest_values(wdi, "gdp_usd", "Brazil; South Korea"), "South Korea.*ISO3")
+  expect_error(latest_values(wdi, "happiness", "Brazil"), "Unknown indicator 'happiness'")
+  expect_error(latest_values(wdi, "gini", "Brazil"), "No gini data for Brazil")
 })
 
 test_that("indicator_series() returns non-missing values in the year range", {
-  series <- measures$indicator_series(local_wdi(), "inflation_pct", "CHL; BRA", start_year = 2021)
+  series <- indicator_series(local_wdi(), "inflation_pct", "CHL; BRA", start_year = 2021)
 
   expect_equal(series$economy, c("Brazil", "Brazil", "Chile"))
   expect_equal(series$year, c(2021L, 2022L, 2021L))
@@ -56,26 +83,26 @@ test_that("indicator_series() returns non-missing values in the year range", {
 
 test_that("indicator_ranking() ranks countries only, in the latest well-covered year", {
   wdi <- local_wdi()
-  ranked <- measures$indicator_ranking(wdi, "gdp_usd")
+  ranked <- indicator_ranking(wdi, "gdp_usd")
   # 2022 is missing for Brazil, but still reported by 2 of 3 countries
   expect_equal(ranked$year, c(2022L, 2022L))
   expect_equal(ranked$country, c("Korea, Rep.", "Chile"))
   expect_equal(ranked$rank, 1:2)
 
-  lowest <- measures$indicator_ranking(wdi, "inflation_pct", year = 2021, lowest_first = TRUE, top_n = 1)
+  lowest <- indicator_ranking(wdi, "inflation_pct", year = 2021, lowest_first = TRUE, top_n = 1)
   expect_equal(lowest$country, "Korea, Rep.")
 
-  latin <- measures$indicator_ranking(wdi, "gdp_usd", year = 2020, region = "Latin America & Caribbean")
+  latin <- indicator_ranking(wdi, "gdp_usd", year = 2020, region = "Latin America & Caribbean")
   expect_equal(latin$country, c("Brazil", "Chile"))
-  expect_error(measures$indicator_ranking(wdi, "gdp_usd", region = "Atlantis"), "Unknown region")
+  expect_error(indicator_ranking(wdi, "gdp_usd", region = "Atlantis"), "Unknown region")
 })
 
 test_that("compound_growth() computes the annual growth rate between two years", {
   wdi <- local_wdi()
-  growth <- measures$compound_growth(wdi, "gdp_usd", "Chile; World; Brazil", 2020, 2022)
+  growth <- compound_growth(wdi, "gdp_usd", "Chile; World; Brazil", 2020, 2022)
 
   expect_equal(growth$annual_growth_pct, c(NA, 10, 10))
-  expect_error(measures$compound_growth(wdi, "gdp_usd", "Chile", 2022, 2020), "after start_year")
+  expect_error(compound_growth(wdi, "gdp_usd", "Chile", 2022, 2020), "after start_year")
 })
 
 test_that("new_agent() builds a commons agent with guarded streaming over the World Bank tables", {
@@ -100,19 +127,19 @@ fake_agent <- function(replies) {
   agent$stream_async <- function(...) {
     agent$calls <- c(agent$calls, list(list(...)))
     chunks <- replies[[length(agent$calls)]]
-    agent$turns <- c(agent$turns, list(ellmer::UserTurn(list(ellmer::ContentText("question")))))
-    agent$turns <- c(agent$turns, list(ellmer::AssistantTurn(keep(chunks, \(chunk) !is.character(chunk)))))
-    coro::async_generator(function() {
+    agent$turns <- c(agent$turns, list(UserTurn(list(ContentText("question")))))
+    agent$turns <- c(agent$turns, list(AssistantTurn(keep(chunks, \(chunk) !is.character(chunk)))))
+    async_generator(function() {
       for (chunk in chunks) {
-        coro::await(promises::promise_resolve(NULL))
-        coro::yield(chunk)
+        await(promise_resolve(NULL))
+        yield(chunk)
       }
     })()
   }
   agent
 }
 
-lookup <- ellmer::ContentToolRequest("1", "call_measure", list())
+lookup <- ContentToolRequest("1", "call_measure", list())
 
 grounded <- function(agent, controller = NULL) {
   args <- list("GDP of Brazil?", stream = "content", controller = controller)
@@ -149,7 +176,7 @@ test_that("a model that never looks anything up gets the no-lookup message inste
 
 test_that("a reply the user stopped before any lookup shows nothing and isn't retried", {
   agent <- fake_agent(list(list("Partial answer")))
-  controller <- ellmer::stream_controller()
+  controller <- stream_controller()
   controller$cancel()
 
   expect_equal(grounded(agent, controller), "")
@@ -165,9 +192,9 @@ test_that("the grounded agent accepts shinychat's spliced call, stream_async(!!!
 })
 
 test_that("has_lookup() counts successful tool results only", {
-  ask <- ellmer::UserTurn(list(ellmer::ContentText("GDP of Brazil?")))
-  found <- ellmer::UserTurn(list(ellmer::ContentToolResult(value = "2.28e12", request = lookup)))
-  failed <- ellmer::UserTurn(list(ellmer::ContentToolResult(error = "Unknown indicator", request = lookup)))
+  ask <- UserTurn(list(ContentText("GDP of Brazil?")))
+  found <- UserTurn(list(ContentToolResult(value = "2.28e12", request = lookup)))
+  failed <- UserTurn(list(ContentToolResult(error = "Unknown indicator", request = lookup)))
 
   expect_true(has_lookup(list(ask, found)))
   expect_false(has_lookup(list(ask, failed)))
@@ -177,9 +204,9 @@ test_that("has_lookup() counts successful tool results only", {
 test_that("once data was looked up, a follow-up answered from it is shown, not dropped or retried", {
   agent <- fake_agent(list(list("As found above: 2.28 trillion (2025).")))
   agent$turns <- list(
-    ellmer::UserTurn(list(ellmer::ContentText("GDP of Brazil?"))),
-    ellmer::AssistantTurn(list(lookup)),
-    ellmer::UserTurn(list(ellmer::ContentToolResult(value = "2.28e12", request = lookup)))
+    UserTurn(list(ContentText("GDP of Brazil?"))),
+    AssistantTurn(list(lookup)),
+    UserTurn(list(ContentToolResult(value = "2.28e12", request = lookup)))
   )
 
   expect_equal(grounded(agent), "As found above: 2.28 trillion (2025).")

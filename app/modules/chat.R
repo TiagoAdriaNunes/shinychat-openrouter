@@ -37,8 +37,13 @@ mode_tabs <- function(id) {
     button_id <- str_c(input_id, "_", value)
     tagList(
       tags$input(
-        type = "radio", class = "btn-check", name = input_id, id = button_id, value = value,
-        autocomplete = "off", checked = if (checked) NA
+        type = "radio",
+        class = "btn-check",
+        name = input_id,
+        id = button_id,
+        value = value,
+        autocomplete = "off",
+        checked = if (checked) NA
       ),
       tags$label(class = "btn btn-sm btn-outline-primary rounded-pill px-3", `for` = button_id, icon(icon_name), label)
     )
@@ -117,9 +122,14 @@ ui <- function(id) {
 # Returns a list of reactives: `model` (id of the model in use), `world_bank` (TRUE in World Bank
 # data mode) and `stats` (last response's stats or NULL).
 #' @export
-server <- function(id, models = free_models(), agent_models = free_models(tools_only = TRUE),
-                   world_bank_data = wdi_panel, data_loading = wdi_downloading,
-                   session = getDefaultReactiveDomain()) {
+server <- function(
+  id,
+  models = free_models(),
+  agent_models = free_models(tools_only = TRUE),
+  world_bank_data = wdi_panel,
+  data_loading = wdi_downloading,
+  session = getDefaultReactiveDomain()
+) {
   input <- session$input
   output <- session$output
   # Start with the first model: the most intelligent one (or the fallback if the list couldn't be fetched)
@@ -185,8 +195,11 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
       # from the client that produced it
       model_id <- client$get_model()
       started <<- list(
-        time = Sys.time(), client = client, model_id = model_id,
-        label = label_for(model_id, agent_mode()), turn = client$last_turn()
+        time = Sys.time(),
+        client = client,
+        model_id = model_id,
+        label = label_for(model_id, agent_mode()),
+        turn = client$last_turn()
       )
       return()
     }
@@ -229,7 +242,9 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
       showNotification(message, type = "warning", session = session)
       req(FALSE)
     }
-    if (chat$status() == "streaming") revert(world_bank$busy)
+    if (chat$status() == "streaming") {
+      revert(world_bank$busy)
+    }
 
     choices <- mode_models(on)
     model <- if (current_model() %in% choices) current_model() else unname(choices[[1]])
@@ -237,7 +252,9 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
       {
         if (on && test_null(source)) {
           panel <<- world_bank_data()
-          if (test_null(panel)) stop("no data")
+          if (test_null(panel)) {
+            stop("no data")
+          }
           source <<- wdi_source(panel)
         }
         client_for(model, on)
@@ -250,7 +267,9 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
         NULL
       }
     )
-    if (test_null(new_client)) revert(world_bank$unavailable)
+    if (test_null(new_client)) {
+      revert(world_bank$unavailable)
+    }
 
     agent_mode(on)
     pending_model <<- NULL
@@ -284,13 +303,18 @@ server <- function(id, models = free_models(), agent_models = free_models(tools_
   observeEvent(input[[mode_input_id(id)]], ignoreInit = TRUE, {
     on <- identical(input[[mode_input_id(id)]], "world_bank")
     # Picking Chat again cancels the wait
-    if (!on && waiting()) stop_waiting()
+    if (!on && waiting()) {
+      stop_waiting()
+    }
     req(on != agent_mode(), !waiting())
     if (on && test_null(source) && data_loading()) {
       waiting(TRUE)
       showNotification(
         tagList(tags$span(class = "spinner-border spinner-border-sm me-2", role = "status"), world_bank$loading),
-        id = loading_id, duration = NULL, closeButton = FALSE, session = session
+        id = loading_id,
+        duration = NULL,
+        closeButton = FALSE,
+        session = session
       )
       req(FALSE)
     }
