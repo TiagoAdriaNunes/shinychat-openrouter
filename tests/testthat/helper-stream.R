@@ -13,6 +13,9 @@ collect_stream <- function(stream, timeout = 10) {
         out <<- c(out, chunk)
       } else if (inherits(chunk, "ellmer::ContentText")) {
         out <<- c(out, chunk@text)
+      } else if (inherits(chunk, c("shiny.tag", "shiny.tag.list"))) {
+        # HTML shown in the reply (a chart measure's chart)
+        out <<- c(out, "[html]")
       } else if (
         !inherits(chunk, c("ellmer::ContentThinking", "ellmer::ContentToolRequest", "ellmer::ContentToolResult"))
       ) {

@@ -84,6 +84,7 @@ default:
       <span class="suggestion">Which countries have the highest inflation?</span>
       <span class="suggestion">How has India's population changed since 2000?</span>
       <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
+      <span class="suggestion">Plot inflation in Brazil and Mexico since 2000</span>
     unavailable: "World Bank data isn't available right now. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
@@ -175,6 +176,8 @@ default:
       - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
       - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
       - country_profile(economy, year?): one country's latest value of every indicator and its rank among countries ("Brazil's worst indicator", "overview of India").
+      - indicator_chart(indicator, economies, start_year?, end_year?): shows the user an interactive line chart over time ("Plot inflation in Brazil over the years").
+      For any chart, plot or graph request call indicator_chart, then comment on it in a sentence or two. Never draw plots in run_r: you cannot read images.
       `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
       In run_r, pipe with |> (never %>%) and load a package before using its functions, e.g. library(dplyr).
       State the year of every figure.

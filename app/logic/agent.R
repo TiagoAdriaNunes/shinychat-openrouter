@@ -1,5 +1,5 @@
 box::use(
-  checkmate[test_string],
+  checkmate[test_null, test_string],
   commons[commons, context_layer, data_source, semantic_layer],
   coro[async_generator, await_each, yield],
   ellmer[chat_openrouter],
@@ -170,6 +170,26 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
   NULL
 })
 
+#' Pass an agent's `stream` through, adding the chart of each chart measure (the `chart` its tool
+#' result carries, see app/measures/charts.R) to the reply itself, right after the tool's card:
+#' shinychat shows HTML chunks in the message. The body must end with NULL (see safe_stream()).
+#' @export
+chart_stream <- async_generator(function(stream) {
+  for (chunk in await_each(stream)) {
+    yield(chunk)
+    if (inherits(chunk, "ellmer::ContentToolResult") && !test_null(chunk@extra$chart)) {
+      yield(chunk@extra$chart)
+    }
+  }
+  NULL
+})
+
+#' Make `agent$stream_async()` go through chart_stream().
+#' @export
+show_charts <- function(agent) {
+  wrap_stream(agent, \(original, ...) chart_stream(original(...)))
+}
+
 #' `world_bank$instructions` with {indicators} replaced by the configured indicator names.
 #' @export
 agent_instructions <- function() {
@@ -202,7 +222,7 @@ new_agent <- function(model, label, source) {
       network = "none"
     )
   })
-  guard_stream(ground_agent(agent, label), label)
+  guard_stream(ground_agent(show_charts(agent), label), label)
 }
 
 #' Make `agent$stream_async()` go through grounded_stream(). `label` is the model name for messages,
