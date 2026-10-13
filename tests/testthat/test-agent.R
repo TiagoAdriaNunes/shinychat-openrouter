@@ -3,19 +3,22 @@ box::use(
   coro[async_generator, await, yield],
   DBI[dbConnect, dbDisconnect, dbWriteTable],
   duckdb[duckdb],
+  htmltools[div, renderTags],
   ellmer[AssistantTurn, ContentText, ContentToolRequest, ContentToolResult, stream_controller, UserTurn],
   promises[promise_resolve],
-  purrr[keep],
+  purrr[keep, map_chr],
+  S7[S7_inherits],
   stringr[fixed, str_c, str_replace_all],
   testthat[expect_equal, expect_error, expect_false, expect_message, expect_s3_class, expect_true, test_that],
   withr[defer, local_envvar, local_options],
 )
 
 box::use(
-  app / logic / agent[agent_instructions, ground_agent, grounded_stream, has_lookup, new_agent, reasoning_args, wdi_source],
+  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, has_lookup, new_agent, reasoning_args, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
+  app / measures / charts[indicator_chart],
   app / measures / `world-bank`[compound_growth, indicator_ranking, indicator_series, latest_values],
 )
 
@@ -39,7 +42,60 @@ test_that("commons reads the four measures from the measures file", {
 })
 
 test_that("commons reads every measure in the measures directory", {
-  expect_message(print(semantic_layer(dirname(measures_file))), "5 measures")
+  expect_message(print(semantic_layer(dirname(measures_file))), "6 measures")
+})
+
+test_that("indicator_chart() shows the user a chart and gives the model a text summary of it", {
+  wdi <- local_wdi()
+  chart <- indicator_chart(wdi, "inflation_pct", "CHL; brazil", start_year = 2021)
+
+  expect_true(S7_inherits(chart, ContentToolResult))
+  # Words only for the model: the free models can't read images
+  expect_true(is.character(chart@value))
+  expect_match(chart@value, "Brazil: 2021-2022, first 8, last 9, min 8 (2021), max 9 (2022)", fixed = TRUE)
+  expect_match(chart@value, "Chile: 2021-2021, first 7", fixed = TRUE)
+  # The chart itself, for chart_stream() to put in the reply, with percentages as 0.00%
+  expect_match(as.character(chart@extra$chart), "echarts4r", fixed = TRUE)
+  expect_match(as.character(chart@extra$chart), "toFixed(2) + '%'", fixed = TRUE)
+  # shinychat must find the chart's JavaScript, or the reply shows a blank space instead
+  dependencies <- map_chr(renderTags(chart@extra$chart)$dependencies, "name")
+  expect_true(all(c("htmlwidgets", "echarts4r") %in% dependencies))
+  expect_s3_class(chart@extra$chart, "shiny.tag")
+  expect_equal(chart@extra$data$economy, c("Brazil", "Chile", "Brazil"))
+
+  expect_error(indicator_chart(wdi, "inflation_pct", "Atlantis"), "No World Bank economy named Atlantis")
+  expect_error(indicator_chart(wdi, "happiness", "Brazil"), "Unknown indicator 'happiness'")
+  expect_error(indicator_chart(wdi, "inflation_pct", "Brazil", end_year = 1990), "No inflation_pct data")
+})
+
+test_that("a chart called through commons reaches the model as text, with the chart kept for the user", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  agent <- new_agent("google/gemma:free", "Gemma (free)", wdi_source(panel))
+
+  result <- agent$get_tools()$call_measure(
+    name = "indicator_chart",
+    arguments = list(indicator = "gdp_usd", economies = "World")
+  )
+
+  expect_null(result@error)
+  expect_true(is.character(result@value))
+  expect_match(result@value, "World: 2020-2022, first 1,000", fixed = TRUE)
+  expect_match(as.character(result@extra$chart), "echarts4r", fixed = TRUE)
+})
+
+test_that("chart_stream() puts a chart measure's chart in the reply, after its tool result", {
+  with_chart <- ContentToolResult(value = "Line chart.", extra = list(chart = div("chart")))
+  plain <- ContentToolResult(value = "A table.")
+  request <- ContentToolRequest("1", "call_measure", list())
+  reply <- async_generator(function() {
+    for (chunk in list("Here: ", request, with_chart, plain, "Inflation fell.")) {
+      await(promise_resolve(NULL))
+      yield(chunk)
+    }
+  })
+
+  expect_equal(collect_stream(chart_stream(reply())), "Here: [html]Inflation fell.")
 })
 
 test_that("country_profile() gives each indicator's latest value and rank among countries", {
@@ -223,6 +279,7 @@ test_that("agent_instructions() lists every configured indicator for direct meas
   text <- agent_instructions()
 
   expect_match(text, "latest_values(indicator, economies)", fixed = TRUE)
+  expect_match(text, "indicator_chart(indicator, economies, start_year?, end_year?)", fixed = TRUE)
   for (indicator in c("gdp_usd", "population", "gov_debt_pct_gdp", "gini")) {
     expect_match(text, indicator, fixed = TRUE)
   }
