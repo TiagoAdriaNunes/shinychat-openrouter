@@ -46,6 +46,9 @@ fallback_model_label <- settings$openrouter$fallback_model_label
 models_url <- settings$openrouter$models_url
 
 #' @export
+user_models_url <- settings$openrouter$user_models_url
+
+#' @export
 models_page_url <- settings$openrouter$models_page_url
 
 #' @export

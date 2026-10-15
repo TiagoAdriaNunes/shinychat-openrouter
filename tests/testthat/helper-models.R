@@ -1,5 +1,6 @@
 box::use(
   httr2[response, response_json],
+  purrr[keep],
   stringr[str_ends, str_match],
 )
 
@@ -80,11 +81,18 @@ fake_efforts <- list(
   "c/gamma:free" = list(efforts = c("high", "medium", "low"), default = "medium")
 )
 
-# Mock for httr2::local_mocked_responses(): the catalogue, and for <models_url>/<id>/endpoints one
+# Mock for httr2::local_mocked_responses(): the catalogue; for <models_url>/<id>/endpoints one
 # provider with that model's `uptime` (named by model id, 100 when not given; NULL for no figure,
-# NA for a failed lookup)
-fake_openrouter <- function(catalogue = fake_catalogue, uptime = list()) {
+# NA for a failed lookup); and for the account's usable models (user_models_url) the catalogue
+# without the ids in `unusable` (NA for a failed request)
+fake_openrouter <- function(catalogue = fake_catalogue, uptime = list(), unusable = character()) {
   function(req) {
+    if (str_ends(req$url, "/models/user")) {
+      if (anyNA(unusable)) {
+        return(response(status_code = 401))
+      }
+      return(response_json(body = list(data = keep(catalogue$data, \(m) !m$id %in% unusable))))
+    }
     if (!str_ends(req$url, "/endpoints")) {
       return(response_json(body = catalogue))
     }
