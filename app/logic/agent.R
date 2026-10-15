@@ -2,11 +2,12 @@ box::use(
   checkmate[test_null, test_string],
   commons[commons, context_layer, data_source, semantic_layer],
   coro[async_generator, await_each, yield],
-  ellmer[chat_openrouter],
+  ellmer[chat_openrouter, ContentThinking, ContentToolRequest, ContentToolResult],
   glue[glue, glue_data],
   logger[log_info, log_warn],
   purrr[list_rbind, map, map_chr, some],
   rlang[list2],
+  S7[S7_inherits],
   stringr[str_c, str_flatten_comma],
   withr[with_options],
   yaml[write_yaml],
@@ -112,14 +113,14 @@ wdi_source <- function(panel) {
   )
 }
 
-is_tool_request <- function(chunk) inherits(chunk, "ellmer::ContentToolRequest")
-is_thinking <- function(chunk) inherits(chunk, "ellmer::ContentThinking")
+is_tool_request <- function(chunk) S7_inherits(chunk, ContentToolRequest)
+is_thinking <- function(chunk) S7_inherits(chunk, ContentThinking)
 
 #' TRUE if `turns` contain a successful tool result: data already looked up in this conversation.
 #' @export
 has_lookup <- function(turns) {
   some(turns, \(turn) {
-    some(turn@contents, \(content) inherits(content, "ellmer::ContentToolResult") && is.null(content@error))
+    some(turn@contents, \(content) S7_inherits(content, ContentToolResult) && test_null(content@error))
   })
 }
 
@@ -203,7 +204,7 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
 chart_stream <- async_generator(function(stream) {
   for (chunk in await_each(stream)) {
     yield(chunk)
-    if (inherits(chunk, "ellmer::ContentToolResult") && !test_null(chunk@extra$chart)) {
+    if (S7_inherits(chunk, ContentToolResult) && !test_null(chunk@extra$chart)) {
       yield(chunk@extra$chart)
     }
   }
