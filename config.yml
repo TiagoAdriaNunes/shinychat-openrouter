@@ -221,6 +221,11 @@ default:
     # and used again whenever a model is picked (the effort dropdown can change it); models without
     # that level get the nearest one. Empty to use each model's default.
     reasoning_effort: "low"
+    # Make the model call a tool on the first request for each new question (OpenRouter
+    # `tool_choice: required`), so it looks the data up instead of answering from memory. Some free
+    # models ignore it; replies that still skip the data are retried and then dropped (lookup_nudge,
+    # no_lookup).
+    require_lookup: true
     # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
     # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
     # role and the trusted-calculation workflow, and data knowledge belongs in the data dictionary
@@ -228,11 +233,25 @@ default:
     # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
     # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
     # {indicators} and {groups} are replaced with the indicator and group names above.
+    # Replace commons' descriptions of these tools, which say to run search_pool before any data
+    # question: that contradicts `instructions`, which list the measures to call directly, and a
+    # reasoning model once looped between the two rules without ever calling a tool.
+    tool_descriptions:
+      search_pool: >-
+        Search the semantic layer's trusted calculations (measures, run with call_measure). The
+        measures listed in your instructions need no search: call them with call_measure right away.
+        Use this only for a data question none of them answers, before any other data tool.
+      call_measure: >-
+        Run a trusted calculation (measure): one listed in your instructions, or one returned by
+        search_pool. `arguments` is a JSON object using exactly the measure's argument names.
+        Prefer a measure's own arguments when they can answer the question directly. Measure results
+        may be displayed directly to the user. If a result says it is already visible, do not
+        reproduce it in your reply; summarize or interpret the relevant results instead.
     instructions: |
       Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
       Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
       "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
-      These are all the trusted measures, so call them directly with call_measure; use search_pool only for questions none of them answers:
+      These are all the trusted measures. They are not tools: run one with the call_measure tool, its name in `name` and its arguments as one JSON object in `arguments`, e.g. name "indicator_chart", arguments {{"indicator": "inflation_pct", "economies": "Brazil; Mexico", "start_year": 2000}}. For questions none of them answers, use search_pool:
       - latest_values(indicator, economies?, group?): the latest value for countries or regions ("What is Brazil's GDP?").
       - indicator_series(indicator, economies?, start_year?, end_year?, group?): values over time.
       - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?, group?): top or bottom countries.

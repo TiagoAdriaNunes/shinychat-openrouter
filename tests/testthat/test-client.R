@@ -1,6 +1,6 @@
 box::use(
   coro[async_generator, await, yield],
-  ellmer[AssistantTurn, ContentText],
+  ellmer[AssistantTurn, ContentText, UserTurn],
   httr2[local_mocked_responses, req_perform, request, response],
   promises[promise_resolve],
   rlang[error_cnd],
@@ -10,7 +10,7 @@ box::use(
 )
 
 box::use(
-  app / logic / client[error_message, format_stats, new_client, response_stats, safe_stream, set_reasoning_effort],
+  app / logic / client[error_message, format_stats, new_client, response_stats, response_turns, safe_stream, set_reasoning_effort],
   app / logic / config[error_messages],
 )
 
@@ -163,4 +163,39 @@ test_that("set_reasoning_effort() sends the effort with later requests until it'
   expect_equal(request$reasoning, list(effort = "high"))
   set_reasoning_effort(client, NULL)
   expect_null(ask(client)$reasoning)
+})
+
+test_that("response_stats() adds up the tokens of every request in the response, with thinking tokens", {
+  turn <- function(input, output, thinking = NULL) {
+    usage <- if (!is.null(thinking)) list(completion_tokens_details = list(reasoning_tokens = thinking))
+    AssistantTurn(
+      list(ContentText("Hi")),
+      json = list(usage = usage),
+      tokens = c(input = input, output = output, cached_input = 0)
+    )
+  }
+  first <- turn(100, 20, thinking = 15)
+  last <- turn(300, 50, thinking = 10)
+
+  stats <- response_stats("Gemma", "google/gemma:free", 2, last, NULL, turns = list(first, last))
+  expect_equal(stats$requests, 2)
+  expect_equal(c(stats$input_tokens, stats$output_tokens, stats$thinking_tokens), c(400, 70, 25))
+  expect_equal(format_stats(stats), "Gemma · 2.0 s · 2 requests · 400 in / 70 out tokens (25 thinking) · 35 tokens/s")
+
+  # No thinking figure: none shown
+  plain <- response_stats("Gemma", "google/gemma:free", 2, turn(25, 186), NULL)
+  expect_null(plain$thinking_tokens)
+  expect_equal(format_stats(plain), "Gemma · 2.0 s · 25 in / 186 out tokens · 93 tokens/s")
+})
+
+test_that("response_turns() lists the assistant turns of the last round", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  client <- new_client("a/alpha:free", system_prompt = "Be brief.")
+  expect_equal(response_turns(client), list())
+
+  reply <- function(text) AssistantTurn(list(ContentText(text)), tokens = c(input = 1, output = 1, cached_input = 0))
+  client$set_turns(list(UserTurn("Q1"), reply("A1"), UserTurn("Q2"), reply("A2")))
+  turns <- response_turns(client)
+  expect_equal(length(turns), 1)
+  expect_equal(turns[[1]]@text, "A2")
 })
