@@ -4,6 +4,7 @@ box::use(
   memoise[memoise],
   stringr[str_ends],
   testthat[expect_equal, test_that],
+  withr[local_envvar],
 )
 
 box::use(
@@ -13,6 +14,15 @@ box::use(
 test_that("free_models() keeps free text-only, non-excluded models, most intelligent first, low priority last", {
   local_mocked_responses(fake_openrouter())
 
+  expect_equal(free_models(fetch = fetch_free_models), fake_models)
+})
+
+test_that("free_models() leaves out models the account can't use, or keeps them all if it can't tell", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_mocked_responses(fake_openrouter(unusable = "a/alpha:free"))
+  expect_equal(free_models(fetch = fetch_free_models), fake_models[fake_models != "a/alpha:free"])
+
+  local_mocked_responses(fake_openrouter(unusable = NA))
   expect_equal(free_models(fetch = fetch_free_models), fake_models)
 })
 
@@ -58,8 +68,8 @@ test_that("the memoised fetch reuses the list until it expires", {
   calls <- 0
   openrouter <- fake_openrouter()
   local_mocked_responses(function(req) {
-    # Count catalogue requests, not the uptime lookups each one triggers
-    if (!str_ends(req$url, "/endpoints")) {
+    # Count catalogue requests, not the uptime and usable-model lookups each one triggers
+    if (!str_ends(req$url, "/endpoints") && !str_ends(req$url, "/models/user")) {
       calls <<- calls + 1
     }
     openrouter(req)
