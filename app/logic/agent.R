@@ -5,7 +5,7 @@ box::use(
   ellmer[chat_openrouter],
   glue[glue, glue_data],
   logger[log_info, log_warn],
-  purrr[map, map_chr, some],
+  purrr[list_rbind, map, map_chr, some],
   rlang[list2],
   stringr[str_c, str_flatten_comma],
   withr[with_options],
@@ -71,6 +71,18 @@ dictionary_file <- function(panel) {
           ),
           indicator_columns
         )
+      ),
+      list(
+        name = "groups",
+        description = glue("Member countries of country groups: {str_flatten_comma(group_names())}."),
+        details = str_c(
+          "Current membership, applied to every year. Join to `countries` on iso3c to list or rank a ",
+          "group's countries; the group's total is in `aggregates`."
+        ),
+        columns = list(
+          list(name = "group", description = "Group name, e.g. 'Euro area', 'European Union', 'Mercosur'."),
+          list(name = "iso3c", description = "ISO3 code of a member country.")
+        )
       )
     )
   )
@@ -79,11 +91,25 @@ dictionary_file <- function(panel) {
   path
 }
 
-#' commons data source with the panel's `countries` and `aggregates` tables (an in-memory duckdb).
-#' Create one per Shiny session and reuse it for every agent in that session.
+group_names <- function() map_chr(world_bank$groups, "name")
+
+#' The `world_bank$groups` memberships as a table: one row per group and member (columns group, iso3c).
+#' @export
+groups_table <- function() {
+  map(world_bank$groups, \(g) data.frame(group = g$name, iso3c = as.character(unlist(g$members)))) |>
+    list_rbind()
+}
+
+#' commons data source with the panel's `countries` and `aggregates` tables and the configured
+#' `groups` (an in-memory duckdb). Create one per Shiny session and reuse it for every agent in it.
 #' @export
 wdi_source <- function(panel) {
-  data_source(countries = panel$countries, aggregates = panel$aggregates, dictionary = dictionary_file(panel))
+  data_source(
+    countries = panel$countries,
+    aggregates = panel$aggregates,
+    groups = groups_table(),
+    dictionary = dictionary_file(panel)
+  )
 }
 
 is_tool_request <- function(chunk) inherits(chunk, "ellmer::ContentToolRequest")
@@ -190,11 +216,14 @@ show_charts <- function(agent) {
   wrap_stream(agent, \(original, ...) chart_stream(original(...)))
 }
 
-#' `world_bank$instructions` with {indicators} replaced by the configured indicator names.
+#' `world_bank$instructions` with {indicators} and {groups} replaced by the configured names.
 #' @export
 agent_instructions <- function() {
-  indicators <- str_flatten_comma(map_chr(world_bank$indicators, "name"))
-  as.character(glue_data(list(indicators = indicators), world_bank$instructions, .envir = baseenv()))
+  names <- list(
+    indicators = str_flatten_comma(map_chr(world_bank$indicators, "name")),
+    groups = str_flatten_comma(group_names())
+  )
+  as.character(glue_data(names, world_bank$instructions, .envir = baseenv()))
 }
 
 #' OpenRouter request fields for a reasoning effort (e.g. "low"), or none when `effort` is empty.

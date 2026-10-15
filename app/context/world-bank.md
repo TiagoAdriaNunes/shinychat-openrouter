@@ -20,4 +20,6 @@
 - World Bank spellings of common names: "Korea, Rep." (South Korea), "Korea, Dem. People's Rep." (North Korea), "Russian Federation", "Turkiye", "Egypt, Arab Rep.", "Iran, Islamic Rep.", "Venezuela, RB", "Viet Nam", "Czechia", "Slovak Republic", "Congo, Dem. Rep." (Kinshasa), "Congo, Rep." (Brazzaville), "Cote d'Ivoire", "Lao PDR", "Gambia, The", "Bahamas, The", "Yemen, Rep.", "Syrian Arab Republic". ISO3 codes (e.g. KOR, RUS) avoid spelling problems.
 - Regions and income groups are the World Bank's current classification, applied to every year in the data: a country that is high income today shows as high income in 1990 too.
 - Income groups are set every July from GNI per capita (Atlas method); they are not based on the GDP figures in this data.
+- Country groups in the `groups` table (euro area, EU, Mercosur, G7, ...) list today's members for every year: Croatia counts as euro area in 2010 even though it adopted the euro in 2023. Say so when a question is about years before a member joined.
+- Real GDP growth over several years is the change in `gdp_constant_usd` between the two years. "Since 2020" starts from the 2020 level, so 2020's own growth rate is not part of it.
 - Aggregates include World Bank estimates for countries with missing data, so an aggregate can have a value for a year in which some of its countries don't.

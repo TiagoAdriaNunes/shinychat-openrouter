@@ -9,9 +9,9 @@
 # "No endpoints found that support image input".
 
 box::use(
-  checkmate[test_choice, test_data_frame, test_null, test_subset],
+  checkmate[test_character, test_choice, test_data_frame, test_null, test_subset],
   DBI[dbListFields, dbReadTable],
-  dplyr[all_of, arrange, bind_rows, filter, group_by, mutate, select, summarise],
+  dplyr[all_of, arrange, bind_rows, filter, group_by, mutate, pull, select, summarise],
   duckplyr[methods_overwrite],
   echarts4r[e_axis_labels, e_charts, e_grid, e_legend, e_line, e_text_style, e_toolbox_feature, e_tooltip, e_y_axis],
   ellmer[ContentToolResult],
@@ -32,15 +32,36 @@ chart_id_columns <- c("country", "aggregate", "iso3c", "region", "income", "year
 chart_text_colour <- "#8a8a8a"
 chart_grid_colour <- "rgba(128, 128, 128, 0.25)"
 
+# ISO3 codes of the members of a country group in the `groups` table (name in any case), or none
+# without a group
+chart_group_members <- function(wdi, group) {
+  if (test_null(group)) {
+    return(character())
+  }
+  wanted_group <- str_to_lower(str_trim(group))
+  groups <- dbReadTable(wdi, "groups")
+  members <- groups |>
+    filter(str_to_lower(group) == wanted_group) |>
+    pull(iso3c)
+  if (!test_character(members, min.len = 1)) {
+    stop(glue("Unknown group '{group}'. Use one of: {str_flatten_comma(unique(groups$group))}."), call. = FALSE)
+  }
+  members
+}
+
 # Non-missing values of `indicator` by year for the named countries or aggregates (World Bank names
-# or ISO3 codes, any case), as columns economy, iso3c, year and value. Errors on unknown names so the
-# model can correct them.
-chart_values <- function(wdi, indicator, economies, start_year, end_year) {
+# or ISO3 codes, any case) and the members of `group`, as columns economy, iso3c, year and value.
+# Errors on unknown names so the model can correct them.
+chart_values <- function(wdi, indicator, economies, start_year, end_year, group = NULL) {
   indicators <- setdiff(dbListFields(wdi, "countries"), chart_id_columns)
   if (!test_choice(indicator, indicators)) {
     stop(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call. = FALSE)
   }
-  wanted <- str_subset(str_trim(str_split_1(economies, fixed(";"))), ".")
+  named <- if (test_null(economies)) character() else str_subset(str_trim(str_split_1(economies, fixed(";"))), ".")
+  wanted <- c(named, chart_group_members(wdi, group))
+  if (!test_character(wanted, min.len = 1)) {
+    stop("Give economies, a group, or both.", call. = FALSE)
+  }
   rows <- bind_rows(
     dbReadTable(wdi, "countries") |> select(economy = country, iso3c, year, value = all_of(indicator)),
     dbReadTable(wdi, "aggregates") |> select(economy = aggregate, iso3c, year, value = all_of(indicator))
@@ -105,8 +126,9 @@ chart_formats <- function(percent) {
 #'
 #' Use whenever the user asks for a chart, plot, graph, line chart, figure or visualization, or to
 #' draw, show or visualize a trend over time, e.g. "Plot inflation in Brazil over the years", "Chart
-#' GDP of India and China since 2000", "Graph unemployment in Spain". Shows the user an interactive
-#' line chart with one line per country or region, for any indicator in the data: GDP, GDP growth,
+#' GDP of India and China since 2000", "Graph unemployment in Spain", "Plot GDP growth for the G7
+#' countries". Shows the user an interactive line chart with one line per country or region, or per
+#' member of a group (euro area / eurozone, EU, Mercosur, BRICS, G7...), for any indicator: GDP, GDP growth,
 #' GDP per capita, PPP, inflation, unemployment, population, trade, exports, FDI, government debt and
 #' the Gini index (inequality).
 #'
@@ -116,11 +138,13 @@ chart_formats <- function(percent) {
 #'   ISO3 codes, e.g. 'Brazil; Chile' or 'BRA; CHL; WLD'.
 #' @param start_year `integer` First year to include.
 #' @param end_year `integer` Last year to include.
+#' @param group `string` Also plot every member country of a group in the `groups` table, e.g.
+#'   'Euro area', 'European Union', 'Mercosur', 'G7'.
 #' @return The chart is shown to the user. You get a text summary per economy: years covered, first
 #'   and last value, minimum and maximum with their years.
 #' @measure
-indicator_chart <- function(wdi, indicator, economies, start_year = NULL, end_year = NULL) {
-  rows <- chart_values(wdi, indicator, economies, start_year, end_year)
+indicator_chart <- function(wdi, indicator, economies = NULL, start_year = NULL, end_year = NULL, group = NULL) {
+  rows <- chart_values(wdi, indicator, economies, start_year, end_year, group)
   unit <- chart_unit(rows$value)
   # Indicators in percent are named *_pct or *_pct_gdp
   formats <- chart_formats(str_detect(indicator, "_pct"))

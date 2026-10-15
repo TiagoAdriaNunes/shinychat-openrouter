@@ -14,7 +14,7 @@ box::use(
 )
 
 box::use(
-  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, has_lookup, new_agent, reasoning_args, wdi_source],
+  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, reasoning_args, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
@@ -33,6 +33,7 @@ local_wdi <- function(env = parent.frame()) {
   con <- dbConnect(duckdb())
   dbWriteTable(con, "countries", panel$countries)
   dbWriteTable(con, "aggregates", panel$aggregates)
+  dbWriteTable(con, "groups", data.frame(group = c("Mercosur", "Pacific Alliance"), iso3c = c("BRA", "CHL")))
   defer(dbDisconnect(con, shutdown = TRUE), envir = env)
   con
 }
@@ -153,12 +154,39 @@ test_that("indicator_ranking() ranks countries only, in the latest well-covered 
   expect_error(indicator_ranking(wdi, "gdp_usd", region = "Atlantis"), "Unknown region")
 })
 
-test_that("compound_growth() computes the annual growth rate between two years", {
+test_that("indicator_ranking() ranks only a group's members, the group named in any case", {
   wdi <- local_wdi()
-  growth <- compound_growth(wdi, "gdp_usd", "Chile; World; Brazil", 2020, 2022)
+  # Korea has the highest GDP, but isn't in Mercosur
+  mercosur <- indicator_ranking(wdi, "gdp_usd", year = 2020, group = "mercosur")
+  expect_equal(mercosur$country, "Brazil")
+  expect_error(indicator_ranking(wdi, "gdp_usd", group = "Eurozone"), "Unknown group 'Eurozone'.*Mercosur")
+})
 
-  expect_equal(growth$annual_growth_pct, c(NA, 10, 10))
+test_that("the economy measures take a group's members, with or without named economies", {
+  wdi <- local_wdi()
+  expect_equal(latest_values(wdi, "gdp_usd", group = "Mercosur")$economy, "Brazil")
+  expect_equal(latest_values(wdi, "gdp_usd", "World", group = "Mercosur")$economy, c("Brazil", "World"))
+  expect_equal(unique(indicator_series(wdi, "inflation_pct", group = "Pacific Alliance")$economy), "Chile")
+  expect_equal(unique(indicator_chart(wdi, "inflation_pct", group = "Mercosur")@extra$data$economy), "Brazil")
+  expect_error(latest_values(wdi, "gdp_usd"), "Give economies, a group, or both")
+  expect_error(indicator_chart(wdi, "gdp_usd"), "Give economies, a group, or both")
+})
+
+test_that("compound_growth() gives total and annual growth from start_year's level, highest first", {
+  wdi <- local_wdi()
+  growth <- compound_growth(wdi, "gdp_usd", "World; Brazil; KOR", 2020, 2022)
+
+  # Brazil has no 2022 GDP, so it is last with NA
+  expect_equal(growth$economy, c("World", "Korea, Rep.", "Brazil"))
+  expect_equal(growth$total_growth_pct, c(21, 10, NA))
+  expect_equal(growth$annual_growth_pct, c(10, 100 * (sqrt(1.1) - 1), NA))
+  expect_equal(
+    compound_growth(wdi, "gdp_usd", start_year = 2020, end_year = 2021, group = "Mercosur")$economy,
+    "Brazil"
+  )
   expect_error(compound_growth(wdi, "gdp_usd", "Chile", 2022, 2020), "after start_year")
+  # Adding up yearly rates would be wrong: point to the real GDP level instead
+  expect_error(compound_growth(wdi, "gdp_growth_pct", "Chile", 2020, 2022), "use gdp_constant_usd")
 })
 
 test_that("new_agent() builds a commons agent with guarded streaming over the World Bank tables", {
@@ -278,10 +306,22 @@ test_that("reasoning_args() sends OpenRouter's reasoning effort, or nothing when
 test_that("agent_instructions() lists every configured indicator for direct measure calls", {
   text <- agent_instructions()
 
-  expect_match(text, "latest_values(indicator, economies)", fixed = TRUE)
-  expect_match(text, "indicator_chart(indicator, economies, start_year?, end_year?)", fixed = TRUE)
-  for (indicator in c("gdp_usd", "population", "gov_debt_pct_gdp", "gini")) {
-    expect_match(text, indicator, fixed = TRUE)
+  expect_match(text, "latest_values(indicator, economies?, group?)", fixed = TRUE)
+  expect_match(text, "indicator_chart(indicator, economies?, start_year?, end_year?, group?)", fixed = TRUE)
+  for (name in c("gdp_usd", "gdp_constant_usd", "population", "gov_debt_pct_gdp", "gini", "Euro area", "Mercosur")) {
+    expect_match(text, name, fixed = TRUE)
   }
   expect_false(grepl("{indicators}", text, fixed = TRUE))
+  expect_false(grepl("{groups}", text, fixed = TRUE))
+})
+
+test_that("wdi_source() has the configured groups as a table of members", {
+  groups <- groups_table()
+  expect_equal(names(groups), c("group", "iso3c"))
+  expect_equal(groups$iso3c[groups$group == "Mercosur"], c("ARG", "BRA", "PRY", "URY", "BOL"))
+  expect_equal(sum(groups$group == "Euro area"), 21)
+  expect_equal(sum(groups$group == "European Union"), 27)
+  expect_equal(sum(groups$group == "OECD"), 38)
+  # Every member is an ISO3 code (YAML can't have turned one into TRUE/FALSE)
+  expect_true(all(grepl("^[A-Z]{3}$", groups$iso3c)))
 })
