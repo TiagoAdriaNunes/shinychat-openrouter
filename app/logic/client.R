@@ -1,9 +1,10 @@
 box::use(
   checkmate[test_null, test_number, test_string],
   coro[async_generator, await_each, yield],
-  ellmer[chat_openrouter],
+  ellmer[AssistantPartialTurn, chat_openrouter],
   glue[glue, glue_data],
   logger[log_warn],
+  S7[S7_inherits],
   stringr[fixed, str_c, str_flatten, str_remove, str_starts],
 )
 
@@ -96,7 +97,7 @@ base_model_id <- function(id) str_remove(id, ":free$")
 #' `answered_by` is set when OpenRouter reports a different model than `model_id` (e.g. a router).
 #' @export
 response_stats <- function(model, model_id, seconds, turn, previous_turn) {
-  ok <- !test_null(turn) && !identical(turn, previous_turn) && !inherits(turn, "ellmer::AssistantPartialTurn")
+  ok <- !test_null(turn) && !identical(turn, previous_turn) && !S7_inherits(turn, AssistantPartialTurn)
   stats <- list(model = model, ok = ok, seconds = seconds)
   if (ok) {
     stats$input_tokens <- turn@tokens[["input"]]

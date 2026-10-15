@@ -1,5 +1,6 @@
 box::use(
   httr2[local_mocked_responses, response],
+  later[run_now],
   shiny[testServer],
   testthat[expect_equal, expect_false, expect_match, expect_null, expect_true, test_that],
   withr[local_envvar, local_options],
@@ -194,12 +195,12 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
         session$setInputs(chat_user_input = list(text))
         deadline <- Sys.time() + 10
         while (length(sent) == n && Sys.time() < deadline) {
-          later::run_now(0.05)
+          run_now(0.05)
           session$flushReact()
         }
         # Let the failed response finish before the next step
         for (i in 1:20) {
-          later::run_now(0.05)
+          run_now(0.05)
           session$flushReact()
         }
         last_request()

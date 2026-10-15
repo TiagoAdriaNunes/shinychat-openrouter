@@ -1,3 +1,8 @@
+box::use(
+  httr2[response, response_json],
+  stringr[str_ends, str_match],
+)
+
 # Minimal entries shaped like https://openrouter.ai/api/v1/models
 fake_model <- function(
   id,
@@ -58,14 +63,14 @@ fake_tool_models <- c(
 # NA for a failed lookup)
 fake_openrouter <- function(catalogue = fake_catalogue, uptime = list()) {
   function(req) {
-    if (!stringr::str_ends(req$url, "/endpoints")) {
-      return(httr2::response_json(body = catalogue))
+    if (!str_ends(req$url, "/endpoints")) {
+      return(response_json(body = catalogue))
     }
-    id <- stringr::str_match(req$url, "/models/(.+)/endpoints$")[, 2]
+    id <- str_match(req$url, "/models/(.+)/endpoints$")[, 2]
     value <- if (id %in% names(uptime)) uptime[[id]] else 100
     if (isTRUE(is.na(value))) {
-      return(httr2::response(status_code = 500))
+      return(response(status_code = 500))
     }
-    httr2::response_json(body = list(data = list(endpoints = list(list(uptime_last_30m = value)))))
+    response_json(body = list(data = list(endpoints = list(list(uptime_last_30m = value)))))
   }
 }
