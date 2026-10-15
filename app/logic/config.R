@@ -28,6 +28,12 @@ source_url <- settings$app$source_url
 show_response_stats <- isTRUE(settings$app$show_response_stats)
 
 #' @export
+effort_label <- settings$app$effort_label
+
+#' @export
+effort_default_label <- settings$app$effort_default_label
+
+#' @export
 system_prompt <- settings$chat$system_prompt
 
 #' @export

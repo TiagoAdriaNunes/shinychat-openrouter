@@ -88,6 +88,19 @@ new_client <- function(model, system_prompt, label = model) {
   guard_stream(chat_openrouter(system_prompt = system_prompt, model = model), label)
 }
 
+#' Send OpenRouter's reasoning effort (`reasoning.effort`, e.g. "high") with an ellmer Chat's next
+#' requests, or nothing (the model's default) when `effort` is NULL. Keeps the conversation.
+#' ellmer 0.5 has no setter (api_args are fixed when the client is made and `get_model_object()`
+#' returns a copy), so this edits the client's own Model and reapplies it the way set_model() does.
+#' The effort stays after set_model(), so reset it when the model changes.
+#' @export
+set_reasoning_effort <- function(client, effort = NULL) {
+  private <- client$.__enclos_env__$private
+  private$model@extra_args$reasoning <- if (test_string(effort, min.chars = 1)) list(effort = effort)
+  client$set_model(client$get_model())
+  invisible(client)
+}
+
 # Model id without the ":free" variant suffix, for comparing requested and answering models
 base_model_id <- function(id) str_remove(id, ":free$")
 

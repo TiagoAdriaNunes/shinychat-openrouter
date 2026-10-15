@@ -10,7 +10,7 @@ box::use(
 )
 
 box::use(
-  app / logic / client[error_message, format_stats, new_client, response_stats, safe_stream],
+  app / logic / client[error_message, format_stats, new_client, response_stats, safe_stream, set_reasoning_effort],
   app / logic / config[error_messages],
 )
 
@@ -137,4 +137,30 @@ test_that("format_stats() summarises a response on one line", {
 
   expect_equal(format_stats(list(model = "Gemma", ok = TRUE, seconds = 1)), "Gemma · 1.0 s")
   expect_equal(format_stats(list(model = "Gemma", ok = FALSE, seconds = 8.06)), "Gemma · incomplete after 8.1 s")
+})
+
+test_that("set_reasoning_effort() sends the effort with later requests until it's reset", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(ellmer_max_tries = 1)
+  sent <- list()
+  local_mocked_responses(function(req) {
+    sent[[length(sent) + 1]] <<- req$body$data
+    response(status_code = 503)
+  })
+  ask <- function(client) {
+    collect_stream(client$stream_async(!!!list("Hi"), stream = "content"))
+    sent[[length(sent)]]
+  }
+  client <- new_client("a/alpha:free", system_prompt = "Be brief.")
+
+  expect_null(ask(client)$reasoning)
+  set_reasoning_effort(client, "high")
+  expect_equal(ask(client)$reasoning, list(effort = "high"))
+  # It stays when the model changes (callers reset it)
+  client$set_model("c/gamma:free")
+  request <- ask(client)
+  expect_equal(request$model, "c/gamma:free")
+  expect_equal(request$reasoning, list(effort = "high"))
+  set_reasoning_effort(client, NULL)
+  expect_null(ask(client)$reasoning)
 })

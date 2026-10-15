@@ -19,6 +19,12 @@ default:
     source_url: "https://github.com/TiagoAdriaNunes/shinychat-openrouter/"
     # Line under the input with the last response's model, time and token counts
     show_response_stats: true
+    # Reasoning effort dropdown next to the model: the levels the selected model offers (OpenRouter's
+    # `reasoning.supported_efforts`), starting at the model's default each time a model is picked
+    # (World Bank data mode starts at world_bank.reasoning_effort instead).
+    # Greyed out, showing effort_default_label, for models without effort levels.
+    effort_label: "Effort:"
+    effort_default_label: "Default"
 
   chat:
     # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
@@ -210,8 +216,10 @@ default:
     # that are NOT a security boundary: only for local development (see the `development` section).
     allow_unsafe_fallback: false
     # How much the model thinks before each step (OpenRouter `reasoning.effort`: none, minimal, low,
-    # medium, high, xhigh). The agent mostly picks a measure and reads a small table, so a low effort
-    # answers much faster. Models without adjustable reasoning ignore it. Empty to use each model's default.
+    # medium, high, xhigh, max). The agent mostly picks a measure and reads a small table, so a low
+    # effort answers faster and better than the models' own defaults. Sent to every model in this mode
+    # and used again whenever a model is picked (the effort dropdown can change it); models without
+    # that level get the nearest one. Empty to use each model's default.
     reasoning_effort: "low"
     # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
     # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
