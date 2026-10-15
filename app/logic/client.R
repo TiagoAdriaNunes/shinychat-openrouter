@@ -1,9 +1,10 @@
 box::use(
   checkmate[test_null, test_number, test_string],
   coro[async_generator, await_each, yield],
-  ellmer[AssistantPartialTurn, chat_openrouter],
+  ellmer[AssistantPartialTurn, AssistantTurn, chat_openrouter],
   glue[glue, glue_data],
   logger[log_warn],
+  purrr[keep, map_dbl],
   S7[S7_inherits],
   stringr[fixed, str_c, str_flatten, str_remove, str_starts],
 )
@@ -88,33 +89,61 @@ new_client <- function(model, system_prompt, label = model) {
   guard_stream(chat_openrouter(system_prompt = system_prompt, model = model), label)
 }
 
-#' Send OpenRouter's reasoning effort (`reasoning.effort`, e.g. "high") with an ellmer Chat's next
-#' requests, or nothing (the model's default) when `effort` is NULL. Keeps the conversation.
-#' ellmer 0.5 has no setter (api_args are fixed when the client is made and `get_model_object()`
-#' returns a copy), so this edits the client's own Model and reapplies it the way set_model() does.
-#' The effort stays after set_model(), so reset it when the model changes.
+#' Send the request field `name` = `value` (an `api_args` entry) with an ellmer Chat's next requests,
+#' or stop sending it when `value` is NULL. Keeps the conversation. ellmer 0.5 has no setter (api_args
+#' are fixed when the client is made and `get_model_object()` returns a copy), so this edits the
+#' client's own Model and reapplies it the way set_model() does. Fields stay after set_model().
+#' Works inside $on_request_start() callbacks, which run before the request is built.
 #' @export
-set_reasoning_effort <- function(client, effort = NULL) {
+set_api_arg <- function(client, name, value) {
   private <- client$.__enclos_env__$private
-  private$model@extra_args$reasoning <- if (test_string(effort, min.chars = 1)) list(effort = effort)
+  private$model@extra_args[[name]] <- value
   client$set_model(client$get_model())
   invisible(client)
+}
+
+#' Send OpenRouter's reasoning effort (`reasoning.effort`, e.g. "high") with an ellmer Chat's next
+#' requests, or nothing (the model's default) when `effort` is NULL. The effort stays after
+#' set_model(), so reset it when the model changes.
+#' @export
+set_reasoning_effort <- function(client, effort = NULL) {
+  set_api_arg(client, "reasoning", if (test_string(effort, min.chars = 1)) list(effort = effort))
+}
+
+#' The assistant turns of a client's last round: every model request of its last response (an agent
+#' makes one per step of its tool loop). Empty if the conversation has none.
+#' @export
+response_turns <- function(client) {
+  round <- client$last_round()
+  if (test_null(round)) list() else keep(round@response, \(turn) S7_inherits(turn, AssistantTurn))
+}
+
+# Reasoning ("thinking") tokens among a turn's output tokens, as OpenRouter reports them; NA if absent
+thinking_tokens <- function(turn) {
+  tokens <- turn@json$usage$completion_tokens_details$reasoning_tokens
+  if (test_number(tokens)) tokens else NA_real_
 }
 
 # Model id without the ":free" variant suffix, for comparing requested and answering models
 base_model_id <- function(id) str_remove(id, ":free$")
 
 #' Stats for the response that just finished: `turn` is the client's last turn after the response,
-#' `previous_turn` its last turn before it. ellmer records a failed or stopped response as a partial
-#' turn (with no token counts), so a partial or unchanged turn counts as incomplete.
+#' `previous_turn` its last turn before it, and `turns` all the response's assistant turns (see
+#' response_turns()), whose tokens are added up. ellmer records a failed or stopped response as a
+#' partial turn (with no token counts), so a partial or unchanged turn counts as incomplete.
 #' `answered_by` is set when OpenRouter reports a different model than `model_id` (e.g. a router).
 #' @export
-response_stats <- function(model, model_id, seconds, turn, previous_turn) {
+response_stats <- function(model, model_id, seconds, turn, previous_turn, turns = list(turn)) {
   ok <- !test_null(turn) && !identical(turn, previous_turn) && !S7_inherits(turn, AssistantPartialTurn)
   stats <- list(model = model, ok = ok, seconds = seconds)
   if (ok) {
-    stats$input_tokens <- turn@tokens[["input"]]
-    stats$output_tokens <- turn@tokens[["output"]]
+    stats$requests <- length(turns)
+    stats$input_tokens <- sum(map_dbl(turns, \(t) t@tokens[["input"]]))
+    stats$output_tokens <- sum(map_dbl(turns, \(t) t@tokens[["output"]]))
+    thinking <- map_dbl(turns, thinking_tokens)
+    if (!all(is.na(thinking))) {
+      stats$thinking_tokens <- sum(thinking, na.rm = TRUE)
+    }
     # OpenRouter's response names the model that answered; providers may append a version suffix
     answered <- turn@json$model
     if (
@@ -131,7 +160,8 @@ response_stats <- function(model, model_id, seconds, turn, previous_turn) {
 format_seconds <- function(seconds) format(round(seconds, 1), nsmall = 1)
 
 #' One-line summary of a response's stats, e.g. "Gemma · 2.4 s · 25 in / 186 out tokens · 77 tokens/s",
-#' or "Free Models Router → google/gemma-4-31b-it:free · ..." when a router picked the model.
+#' or "Free Models Router → google/gemma-4-31b-it:free · ..." when a router picked the model. Adds
+#' the number of requests when there were several (an agent's tool loop) and the thinking tokens.
 #' @export
 format_stats <- function(stats) {
   seconds <- format_seconds(stats$seconds)
@@ -140,8 +170,15 @@ format_stats <- function(stats) {
   }
   model <- if (test_null(stats$answered_by)) stats$model else glue("{stats$model} → {stats$answered_by}")
   parts <- c(model, glue("{seconds} s"))
+  if (isTRUE(stats$requests > 1)) {
+    parts <- c(parts, glue("{stats$requests} requests"))
+  }
   if (test_number(stats$output_tokens)) {
-    parts <- c(parts, glue("{stats$input_tokens} in / {stats$output_tokens} out tokens"))
+    tokens <- glue("{stats$input_tokens} in / {stats$output_tokens} out tokens")
+    if (isTRUE(stats$thinking_tokens > 0)) {
+      tokens <- glue("{tokens} ({stats$thinking_tokens} thinking)")
+    }
+    parts <- c(parts, tokens)
     if (stats$seconds > 0) parts <- c(parts, glue("{round(stats$output_tokens / stats$seconds)} tokens/s"))
   }
   str_flatten(parts, " · ")

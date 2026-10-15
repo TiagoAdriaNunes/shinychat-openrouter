@@ -4,17 +4,18 @@ box::use(
   DBI[dbConnect, dbDisconnect, dbWriteTable],
   duckdb[duckdb],
   htmltools[div, renderTags],
-  ellmer[AssistantTurn, ContentText, ContentToolRequest, ContentToolResult, stream_controller, UserTurn],
+  ellmer[AssistantTurn, chat_openrouter, ContentText, ContentToolRequest, ContentToolResult, stream_controller, tool, UserTurn],
+  httr2[local_mocked_responses, response_json],
   promises[promise_resolve],
   purrr[keep, map_chr],
   S7[S7_inherits],
   stringr[fixed, str_c, str_replace_all],
-  testthat[expect_equal, expect_error, expect_false, expect_message, expect_s3_class, expect_true, test_that],
+  testthat[expect_equal, expect_error, expect_false, expect_message, expect_null, expect_s3_class, expect_true, test_that],
   withr[defer, local_envvar, local_options],
 )
 
 box::use(
-  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, reasoning_args, wdi_source],
+  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, reasoning_args, require_lookup, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
@@ -324,4 +325,37 @@ test_that("wdi_source() has the configured groups as a table of members", {
   expect_equal(sum(groups$group == "OECD"), 38)
   # Every member is an ISO3 code (YAML can't have turned one into TRUE/FALSE)
   expect_true(all(grepl("^[A-Z]{3}$", groups$iso3c)))
+})
+
+test_that("require_lookup() requires a tool call only for a new question without earlier data", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(ellmer_max_tries = 1)
+  sent <- list()
+  replies <- list(
+    # The question: a tool call
+    list(tool_calls = list(list(id = "c1", type = "function", `function` = list(name = "lookup", arguments = "{}")))),
+    # After the tool result: the answer
+    list(content = "It is 42."),
+    # The follow-up, answered from the earlier result
+    list(content = "Still 42.")
+  )
+  local_mocked_responses(function(req) {
+    sent[[length(sent) + 1]] <<- req$body$data
+    message <- c(list(role = "assistant"), replies[[length(sent)]])
+    response_json(body = list(
+      model = "a/alpha:free",
+      choices = list(list(index = 0, message = message, finish_reason = "stop")),
+      usage = list(prompt_tokens = 1, completion_tokens = 1, total_tokens = 2)
+    ))
+  })
+  client <- chat_openrouter(model = "a/alpha:free", echo = "none")
+  client$register_tool(tool(function() "42", "Look the figure up", name = "lookup"))
+  require_lookup(client)
+
+  client$chat("What is the figure?")
+  client$chat("And again?")
+  expect_equal(length(sent), 3)
+  expect_equal(sent[[1]]$tool_choice, "required")
+  expect_null(sent[[2]]$tool_choice)
+  expect_null(sent[[3]]$tool_choice)
 })

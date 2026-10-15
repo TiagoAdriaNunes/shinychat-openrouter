@@ -14,7 +14,7 @@ box::use(
 )
 
 box::use(
-  . / client[guard_stream, wrap_stream],
+  . / client[guard_stream, set_api_arg, wrap_stream],
   . / config[fallback_model, world_bank],
 )
 
@@ -130,9 +130,34 @@ split_args <- function(args) {
   list(inputs = args[named == ""], options = args[named != ""])
 }
 
+#' Replace the descriptions of the agent's tools named in `descriptions` (a named list of text):
+#' commons' own say to search before any data question, against our instructions. Keeps the tools.
+#' @export
+describe_tools <- function(agent, descriptions = world_bank$tool_descriptions) {
+  tools <- agent$get_tools()
+  for (name in intersect(names(descriptions), names(tools))) {
+    tools[[name]]@description <- descriptions[[name]]
+  }
+  agent$set_tools(tools)
+  agent
+}
+
+#' Make the first request for each new question require a tool call (`tool_choice = "required"`), so
+#' the model looks the data up instead of answering from memory. Later requests in the tool loop go
+#' without it, so the model can answer (and a failing tool isn't forced again), and so do questions in
+#' a conversation that already holds a lookup (see grounded_stream()). Set per request from
+#' $on_request_start(), which runs before each request is built. Some free models ignore it.
+#' @export
+require_lookup <- function(agent) {
+  agent$on_request_start(function(turns) {
+    question <- !some(turns[[length(turns)]]@contents, \(content) S7_inherits(content, ContentToolResult))
+    set_api_arg(agent, "tool_choice", if (question && !has_lookup(turns)) "required")
+  })
+  agent
+}
+
 #' Stream an agent reply only if it looks the data up. Free models often answer data questions from
-#' memory, some even writing fake tool calls as text, and commons can offer tools but not force them
-#' (ellmer has no tool_choice), so:
+#' memory, some even writing fake tool calls as text, and some ignore require_lookup(), so:
 #' 1. The reply's text is held back until the model makes a real tool call, then everything is passed
 #'    on. Thinking is shown as it comes.
 #' 2. A reply that ends without a tool call is dropped (the turns are restored) and the question is
@@ -252,6 +277,10 @@ new_agent <- function(model, label, source) {
       network = "none"
     )
   })
+  describe_tools(agent)
+  if (isTRUE(world_bank$require_lookup)) {
+    require_lookup(agent)
+  }
   guard_stream(ground_agent(show_charts(agent), label), label)
 }
 

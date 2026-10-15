@@ -18,7 +18,7 @@ box::use(
     app_title, chat_mode_label, disclaimer, effort_default_label, effort_label, fallback_model, fallback_model_label,
     greeting, models_page_url, placeholder, show_response_stats, source_url, system_prompt, world_bank,
   ],
-  .. / logic / client[format_stats, new_client, response_stats, set_reasoning_effort],
+  .. / logic / client[format_stats, new_client, response_stats, response_turns, set_reasoning_effort],
   .. / logic / models[free_models, nearest_effort, reasoning_options],
   .. / logic / theme[chat_theme],
   .. / logic / wdi[wdi_downloading, wdi_panel],
@@ -268,7 +268,8 @@ server <- function(
         model_id = started$model_id,
         seconds = as.numeric(difftime(Sys.time(), started$time, units = "secs")),
         turn = started$client$last_turn(),
-        previous_turn = started$turn
+        previous_turn = started$turn,
+        turns = response_turns(started$client)
       ))
     }
     started <<- NULL

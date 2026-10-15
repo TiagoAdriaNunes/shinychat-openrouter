@@ -1,6 +1,7 @@
 box::use(
   httr2[local_mocked_responses, response],
   later[run_now],
+  purrr[set_names],
   shiny[testServer],
   testthat[expect_equal, expect_false, expect_match, expect_null, expect_true, test_that],
   withr[local_envvar, local_options],
@@ -180,8 +181,13 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
     list(
       model = body$model,
       tools = vapply(body$tools, \(tool) tool[["function"]]$name, ""),
+      descriptions = set_names(
+        vapply(body$tools, \(tool) tool[["function"]]$description, ""),
+        vapply(body$tools, \(tool) tool[["function"]]$name, "")
+      ),
       system = body$messages[[1]]$content,
-      reasoning = body$reasoning
+      reasoning = body$reasoning,
+      tool_choice = body$tool_choice
     )
   }
 
@@ -217,6 +223,7 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       expect_equal(length(plain$tools), 0)
       expect_equal(plain$system, system_prompt)
       expect_null(plain$reasoning)
+      expect_null(plain$tool_choice)
 
       session$setInputs(chat_mode = "world_bank")
       agent <- ask("GDP of Brazil?")
@@ -226,6 +233,11 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       expect_false(grepl(system_prompt, agent$system, fixed = TRUE))
       # The agent sends the World Bank effort, not the model's default
       expect_equal(agent$reasoning$effort, world_bank$reasoning_effort)
+      # with our descriptions of commons' measure tools (not "search before any data question")
+      expect_equal(agent$descriptions[["search_pool"]], world_bank$tool_descriptions$search_pool)
+      expect_equal(agent$descriptions[["call_measure"]], world_bank$tool_descriptions$call_measure)
+      # and requires a tool call for a new question
+      expect_equal(agent$tool_choice, "required")
 
       # Changing model keeps the agent
       session$setInputs(chat_model = "c/gamma:free")
