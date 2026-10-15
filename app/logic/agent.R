@@ -6,10 +6,10 @@ box::use(
   glue[glue, glue_data],
   jsonlite[toJSON, validate],
   logger[log_info, log_warn],
-  purrr[compact, list_rbind, map, map_chr, some],
+  purrr[discard, list_rbind, map, map_chr, some],
   rlang[list2],
   S7[`S7_data<-`, S7_inherits],
-  stringr[fixed, str_c, str_flatten_comma, str_starts, str_trim],
+  stringr[fixed, str_c, str_flatten_comma, str_starts, str_to_lower, str_trim],
   withr[with_options],
   yaml[write_yaml],
 )
@@ -169,13 +169,19 @@ check_measure_calls <- function(agent) {
   agent
 }
 
-# Tool function that runs `measure` through commons' `call_measure` with the fields the model sent
+# Values models send for an argument they mean to leave out: they count as not sent
+is_placeholder <- function(value) {
+  test_string(value) && str_to_lower(str_trim(value)) %in% c("", "{}", "[]", "null", "none", "na", "n/a")
+}
+
+# Tool function that runs `measure` through commons' `call_measure` with the fields the model sent,
+# leaving out the empty ones (NULL or a placeholder, see is_placeholder())
 forward_measure <- function(call_measure, measure) {
   # Evaluate now: called in a loop, a lazy `measure` would end up as the loop's last value
   force(call_measure)
   force(measure)
   function(...) {
-    arguments <- compact(list2(...))
+    arguments <- discard(list2(...), \(value) test_null(value) || is_placeholder(value))
     json <- if (length(arguments) == 0) "{}" else as.character(toJSON(arguments, auto_unbox = TRUE))
     call_measure(name = measure, arguments = json)
   }
@@ -199,6 +205,16 @@ measure_tools <- function(agent, layer) {
   for (measure in measures) {
     tool <- measure
     S7_data(tool) <- forward_measure(tools$call_measure, measure@name)
+    # The schema lists every argument as required, so say which ones are optional
+    for (name in names(tool@arguments@properties)) {
+      if (!tool@arguments@properties[[name]]@required) {
+        tool@arguments@properties[[name]]@description <- str_c(
+          world_bank$optional_argument,
+          " ",
+          tool@arguments@properties[[name]]@description
+        )
+      }
+    }
     tools[[measure@name]] <- tool
   }
   agent$set_tools(tools)

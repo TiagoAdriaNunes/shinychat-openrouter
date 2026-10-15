@@ -44,7 +44,13 @@ chart_group_members <- function(wdi, group) {
     filter(str_to_lower(group) == wanted_group) |>
     pull(iso3c)
   if (!test_character(members, min.len = 1)) {
-    stop(glue("Unknown group '{group}'. Use one of: {str_flatten_comma(unique(groups$group))}."), call. = FALSE)
+    stop(
+      glue(
+        "Unknown group '{group}'. Use one of: {str_flatten_comma(unique(groups$group))}. ",
+        "group is optional: send null when the question isn't about one of these groups."
+      ),
+      call. = FALSE
+    )
   }
   members
 }

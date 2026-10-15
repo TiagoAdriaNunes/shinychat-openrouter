@@ -1,12 +1,12 @@
 box::use(
   checkmate[test_null, test_number, test_string],
   coro[async_generator, await_each, yield],
-  ellmer[AssistantPartialTurn, AssistantTurn, chat_openrouter],
+  ellmer[AssistantPartialTurn, AssistantTurn, chat_openrouter, ContentText],
   glue[glue, glue_data],
   logger[log_warn],
   purrr[keep, map_dbl],
   S7[S7_inherits],
-  stringr[fixed, str_c, str_flatten, str_remove, str_starts],
+  stringr[fixed, str_c, str_detect, str_extract, str_flatten, str_length, str_remove, str_starts, str_sub],
 )
 
 box::use(
@@ -39,19 +39,72 @@ error_message <- function(cnd, model) {
   as.character(glue_data(list(model = model), template, .envir = baseenv()))
 }
 
+# A model's control token written as text, e.g. <|tool_call_begin|> or <|im_end|>
+control_token <- "<\\|[A-Za-z_]+\\|>"
+
+# The reply text of a streamed chunk, or NULL for other content (thinking, tool calls, HTML)
+chunk_text <- function(chunk) {
+  if (is.character(chunk)) {
+    chunk
+  } else if (S7_inherits(chunk, ContentText)) {
+    chunk@text
+  }
+}
+
+#' Split streamed reply `text` (with what was held back from the previous chunk in front) at the
+#' first control token: `show` is the text to pass on, `garbled` whether a token was found (the
+#' reply should stop there), and `held` an unfinished "<|..." at the end, kept for the next chunk in
+#' case it is the start of a token.
+#' @export
+scan_text <- function(text) {
+  if (str_detect(text, control_token)) {
+    return(list(show = str_remove(text, str_c(control_token, "[\\s\\S]*$")), garbled = TRUE, held = ""))
+  }
+  held <- str_extract(text, "<(\\|[A-Za-z_]*\\|?)?$")
+  if (is.na(held)) {
+    held <- ""
+  }
+  list(show = str_sub(text, 1, str_length(text) - str_length(held)), garbled = FALSE, held = held)
+}
+
 # Pass the response through; if the request fails, finish with a friendly message instead of
 # letting shinychat show the raw error. Cancelling stops the stream without an error, so it is unaffected.
+# If the reply text turns into control tokens (scan_text()), which some free models then repeat
+# without end, stop reading there and add the `garbled` message.
 # Note: coro emits the generator's final value as one last chunk, so the body must end with an
 # expression that returns NULL (shinychat ignores NULL chunks). Don't end it with a call that returns a value.
+# (coro generators can't assign the result of an `if` expression, hence the helpers.)
 #' @export
 safe_stream <- async_generator(function(stream, model) {
   failed <- NULL
+  garbled <- FALSE
+  held <- ""
   tryCatch(
     for (chunk in await_each(stream)) {
-      yield(chunk)
+      text <- chunk_text(chunk)
+      if (test_null(text)) {
+        yield(chunk)
+      } else {
+        scanned <- scan_text(str_c(held, text))
+        held <- scanned$held
+        if (str_length(scanned$show) > 0) {
+          yield(scanned$show)
+        }
+        if (scanned$garbled) {
+          garbled <- TRUE
+          break
+        }
+      }
     },
     error = function(e) failed <<- e
   )
+  if (str_length(held) > 0) {
+    yield(held)
+  }
+  if (garbled) {
+    log_warn("Model {model} wrote control tokens as text; reply stopped")
+    yield(str_c("\n\n", as.character(glue_data(list(model = model), error_messages$garbled, .envir = baseenv()))))
+  }
   if (!test_null(failed)) {
     log_warn("Model {model} failed: {conditionMessage(failed)}")
     yield(str_c("\n\n", error_message(failed, model)))

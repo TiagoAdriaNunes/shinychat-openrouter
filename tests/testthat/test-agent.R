@@ -421,3 +421,26 @@ test_that("each measure is a tool of its own that runs through commons", {
   expect_error(tools$latest_values(indicator = "happiness", economies = "World"), "Unknown indicator 'happiness'")
   expect_error(tools$compound_growth(indicator = "gdp_usd", economies = "World"), "requires argument `start_year`")
 })
+
+test_that("measure tools mark optional arguments and treat placeholders as left out", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  agent <- new_agent("google/gemma:free", "Gemma (free)", wdi_source(panel))
+  growth <- agent$get_tools()$compound_growth
+  arguments <- growth@arguments@properties
+
+  expect_match(arguments$group@description, world_bank$optional_argument, fixed = TRUE)
+  expect_match(arguments$economies@description, world_bank$optional_argument, fixed = TRUE)
+  expect_false(grepl(world_bank$optional_argument, arguments$start_year@description, fixed = TRUE))
+
+  # Seen from a model that thought group was required
+  for (group in c("{}", "", "null", "None")) {
+    result <- growth(indicator = "gdp_usd", economies = "World", start_year = 2020L, end_year = 2022L, group = group)
+    expect_null(result@error)
+  }
+  # A real but unknown group still fails, saying group is optional
+  expect_error(
+    growth(indicator = "gdp_usd", economies = "World", start_year = 2020L, end_year = 2022L, group = "Atlantis"),
+    "send null when the question isn't about one of these groups"
+  )
+})

@@ -111,6 +111,10 @@ default:
       You sent: {received}
       Call call_measure again with the complete arguments, or call the measure's own tool (e.g.
       latest_values) with its arguments as fields.
+    # Put before the description of each optional measure argument in the measure tools: OpenRouter
+    # schemas list every argument as required (optional ones accept null), and a model once sent
+    # group "{}" because it thought it had to give one.
+    optional_argument: "Optional: send null to leave it out (the usual case), a value only when the question needs it."
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
     lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
@@ -292,6 +296,9 @@ default:
     unavailable: "**{model} is not available in this app.** Please select a different model from the dropdown below and send your message again."
     # Anything else (provider down, timeout, dropped connection)
     failed: "**{model} didn't respond.** Please try again, or select a different model from the dropdown below."
+    # The model started writing its internal control tokens (e.g. <|tool_call_begin|>) as text, usually
+    # over and over: the reply is cut there
+    garbled: "**{model} started writing garbled text, so its reply was stopped here.** If the answer above is incomplete, please try again or select a different model from the dropdown below."
 
   # Any bslib theme variable can go here; see ?shinychat::page_chat_theme
   theme:

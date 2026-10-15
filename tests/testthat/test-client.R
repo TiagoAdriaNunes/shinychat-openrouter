@@ -10,7 +10,7 @@ box::use(
 )
 
 box::use(
-  app / logic / client[error_message, format_stats, new_client, response_stats, response_turns, safe_stream, set_reasoning_effort],
+  app / logic / client[error_message, format_stats, new_client, response_stats, response_turns, safe_stream, scan_text, set_reasoning_effort],
   app / logic / config[error_messages],
 )
 
@@ -198,4 +198,37 @@ test_that("response_turns() lists the assistant turns of the last round", {
   turns <- response_turns(client)
   expect_equal(length(turns), 1)
   expect_equal(turns[[1]]@text, "A2")
+})
+
+test_that("scan_text() cuts reply text at a control token and holds back a possible start of one", {
+  expect_equal(scan_text("Plain text"), list(show = "Plain text", garbled = FALSE, held = ""))
+  expect_equal(
+    scan_text("$2.28 trillion.<|tool_call_begin|><|tool_calls_section_begin|>"),
+    list(show = "$2.28 trillion.", garbled = TRUE, held = "")
+  )
+  expect_equal(scan_text("Done <|tool_ca"), list(show = "Done ", garbled = FALSE, held = "<|tool_ca"))
+  expect_equal(scan_text("a <"), list(show = "a ", garbled = FALSE, held = "<"))
+  # Not tokens: R's pipe and comparisons
+  expect_equal(scan_text("x |> f() and a <= b"), list(show = "x |> f() and a <= b", garbled = FALSE, held = ""))
+})
+
+test_that("safe_stream() stops a reply that turns into control tokens, keeping the answer before them", {
+  garbage <- list(
+    "Brazil's GDP was $2.28 trillion.",
+    "<|tool_call_begin|><|tool",
+    "_calls_section_begin|>",
+    "never shown"
+  )
+  text <- collect_stream(safe_stream(fake_stream(garbage), "Nemotron"))
+  expect_equal(
+    text,
+    str_c("Brazil's GDP was $2.28 trillion.", "\n\n", expected(error_messages$garbled, "Nemotron"))
+  )
+
+  # A token split across chunks is caught without showing its start
+  split <- collect_stream(safe_stream(fake_stream(list("Hi <|tool", "_call_begin|> junk")), "Nemotron"))
+  expect_equal(split, str_c("Hi ", "\n\n", expected(error_messages$garbled, "Nemotron")))
+
+  # A "<" that isn't a token is passed on
+  expect_equal(collect_stream(safe_stream(fake_stream(list("a <", " b")), "Nemotron")), "a < b")
 })
