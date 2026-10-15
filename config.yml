@@ -101,6 +101,16 @@ default:
     # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
     # the first start. The mode turns on when the download ends; picking Chat cancels the wait.
     loading: "Downloading the World Bank data, about 30 seconds. This mode turns on by itself when it is ready."
+    # Error returned to the model when call_measure's `arguments` isn't one JSON object (e.g. single
+    # quotes, bare key: value pairs, or a cut-off "{"). {received} is what it sent.
+    invalid_arguments: >-
+      Rejected: `arguments` must be one JSON object, written as text, with double quotes around every
+      name and text value, e.g. {{"indicator": "gdp_usd", "economies": "Brazil", "start_year": 2000}}.
+      Inside the tool call that text is a JSON string, so escape its quotes:
+      "arguments": "{{\"indicator\": \"gdp_usd\", \"economies\": \"Brazil\"}}".
+      You sent: {received}
+      Call call_measure again with the complete arguments, or call the measure's own tool (e.g.
+      latest_values) with its arguments as fields.
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
     lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
@@ -240,15 +250,17 @@ default:
     # {indicators} and {groups} are replaced with the indicator and group names above.
     # Replace commons' descriptions of these tools, which say to run search_pool before any data
     # question: that contradicts `instructions`, which list the measures to call directly, and a
-    # reasoning model once looped between the two rules without ever calling a tool.
+    # reasoning model once looped between the two rules without ever calling a tool. Each measure
+    # is also a tool of its own (see measure_tools() in app/logic/agent.R).
     tool_descriptions:
       search_pool: >-
-        Search the semantic layer's trusted calculations (measures, run with call_measure). The
-        measures listed in your instructions need no search: call them with call_measure right away.
-        Use this only for a data question none of them answers, before any other data tool.
+        Search the semantic layer's trusted calculations (measures). The measures listed in your
+        instructions are tools of their own and need no search: call them right away. Use this only
+        for a data question none of them answers, before any other data tool.
       call_measure: >-
-        Run a trusted calculation (measure): one listed in your instructions, or one returned by
-        search_pool. `arguments` is a JSON object using exactly the measure's argument names.
+        Run a trusted calculation (measure) returned by search_pool. The measures listed in your
+        instructions are tools of their own: call those directly instead. `arguments` is a JSON object
+        using exactly the measure's argument names.
         Prefer a measure's own arguments when they can answer the question directly. Measure results
         may be displayed directly to the user. If a result says it is already visible, do not
         reproduce it in your reply; summarize or interpret the relevant results instead.
@@ -256,7 +268,7 @@ default:
       Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
       Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
       "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
-      These are all the trusted measures. They are not tools: run one with the call_measure tool, its name in `name` and its arguments as one JSON object in `arguments`, e.g. name "indicator_chart", arguments {{"indicator": "inflation_pct", "economies": "Brazil; Mexico", "start_year": 2000}}. For questions none of them answers, use search_pool:
+      These are all the trusted measures, each a tool of its own: call it directly with its arguments, e.g. the latest_values tool with indicator "gdp_usd" and economies "Brazil". For questions none of them answers, use search_pool:
       - latest_values(indicator, economies?, group?): the latest value for countries or regions ("What is Brazil's GDP?").
       - indicator_series(indicator, economies?, start_year?, end_year?, group?): values over time.
       - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?, group?): top or bottom countries.

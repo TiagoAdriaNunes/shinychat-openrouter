@@ -4,11 +4,12 @@ box::use(
   coro[async_generator, await_each, yield],
   ellmer[chat_openrouter, ContentThinking, ContentToolRequest, ContentToolResult],
   glue[glue, glue_data],
+  jsonlite[toJSON, validate],
   logger[log_info, log_warn],
-  purrr[list_rbind, map, map_chr, some],
+  purrr[compact, list_rbind, map, map_chr, some],
   rlang[list2],
-  S7[S7_inherits],
-  stringr[str_c, str_flatten_comma],
+  S7[`S7_data<-`, S7_inherits],
+  stringr[fixed, str_c, str_flatten_comma, str_starts, str_trim],
   withr[with_options],
   yaml[write_yaml],
 )
@@ -142,6 +143,68 @@ describe_tools <- function(agent, descriptions = world_bank$tool_descriptions) {
   agent
 }
 
+#' Stop with `world_bank$invalid_arguments` (how to write them, and what was received) unless a
+#' measure's `arguments` text is one JSON object. Free models often send almost-JSON (single quotes,
+#' bare `key: value` pairs, comments) or a cut-off `{`, and commons' bare "parse error" left one
+#' retrying 16 times. Non-text arguments (some models send an object) go to commons as they are.
+#' @export
+check_arguments <- function(arguments) {
+  if (!test_string(arguments) || (validate(arguments) && str_starts(str_trim(arguments), fixed("{")))) {
+    return(arguments)
+  }
+  stop(glue_data(list(received = arguments), world_bank$invalid_arguments, .envir = baseenv()), call. = FALSE)
+}
+
+#' Make the agent's call_measure tool check `arguments` (see check_arguments()) before commons parses
+#' it. A failed check reaches the model as the tool's error. Keeps the tool's name, description and schema.
+#' @export
+check_measure_calls <- function(agent) {
+  tools <- agent$get_tools()
+  if (!"call_measure" %in% names(tools)) {
+    return(agent)
+  }
+  original <- tools$call_measure
+  S7_data(tools$call_measure) <- function(name, arguments) original(name, check_arguments(arguments))
+  agent$set_tools(tools)
+  agent
+}
+
+# Tool function that runs `measure` through commons' `call_measure` with the fields the model sent
+forward_measure <- function(call_measure, measure) {
+  # Evaluate now: called in a loop, a lazy `measure` would end up as the loop's last value
+  force(call_measure)
+  force(measure)
+  function(...) {
+    arguments <- compact(list2(...))
+    json <- if (length(arguments) == 0) "{}" else as.character(toJSON(arguments, auto_unbox = TRUE))
+    call_measure(name = measure, arguments = json)
+  }
+}
+
+#' Register each measure of `layer` (a semantic_layer()) as a tool of its own: the same name,
+#' description and arguments commons gives it, run through the agent's call_measure. Models then
+#' send the measure's arguments as plain fields instead of JSON inside call_measure's `arguments`
+#' string, which some free models cut off (Nemotron Lightning sent `"{"` on most first calls) and
+#' others skip by calling the measure as a tool anyway. commons still runs the measure, so results,
+#' charts and trust are unchanged. The measures are read from the layer's private fields (commons
+#' exports no accessor); if they aren't there, the agent keeps only call_measure.
+#' @export
+measure_tools <- function(agent, layer) {
+  tools <- agent$get_tools()
+  measures <- layer$.__enclos_env__$private$measures
+  if (!"call_measure" %in% names(tools) || length(measures) == 0) {
+    log_warn("World Bank measures not registered as tools: commons' semantic layer changed")
+    return(agent)
+  }
+  for (measure in measures) {
+    tool <- measure
+    S7_data(tool) <- forward_measure(tools$call_measure, measure@name)
+    tools[[measure@name]] <- tool
+  }
+  agent$set_tools(tools)
+  agent
+}
+
 #' Make the first request for each new question require a tool call (`tool_choice = "required"`), so
 #' the model looks the data up instead of answering from memory. Later requests in the tool loop go
 #' without it, so the model can answer (and a failing tool isn't forced again), and so do questions in
@@ -267,17 +330,20 @@ new_agent <- function(model, label, source) {
   # commons decides at construction whether its R session can be sandboxed; without a sandbox it
   # aborts unless the commons.allow_unsafe_fallback option is set (by config.yml or the caller)
   unsafe <- if (isTRUE(world_bank$allow_unsafe_fallback)) list(commons.allow_unsafe_fallback = TRUE) else list()
+  layer <- semantic_layer(measure_files)
   agent <- with_options(unsafe, {
     commons(
       chat_openrouter(model = model, api_args = reasoning_args(world_bank$reasoning_effort)),
       data_sources = list(wdi = source),
-      semantic_layer = semantic_layer(measure_files),
+      semantic_layer = layer,
       context_layer = context_layer(context_files),
       instructions = agent_instructions(),
       network = "none"
     )
   })
   describe_tools(agent)
+  measure_tools(agent, layer)
+  check_measure_calls(agent)
   if (isTRUE(world_bank$require_lookup)) {
     require_lookup(agent)
   }

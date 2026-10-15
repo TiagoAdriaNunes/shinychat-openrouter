@@ -228,6 +228,8 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       session$setInputs(chat_mode = "world_bank")
       agent <- ask("GDP of Brazil?")
       expect_true(all(c("search_pool", "call_measure", "run_sql") %in% agent$tools))
+      # Each measure is also a tool of its own
+      expect_true(all(c("latest_values", "indicator_series", "indicator_chart", "country_profile") %in% agent$tools))
       expect_match(agent$system, "## Additional instructions", fixed = TRUE)
       expect_match(agent$system, "Answer only from the data", fixed = TRUE)
       expect_false(grepl(system_prompt, agent$system, fixed = TRUE))

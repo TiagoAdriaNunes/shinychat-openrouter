@@ -9,13 +9,13 @@ box::use(
   promises[promise_resolve],
   purrr[keep, map_chr],
   S7[S7_inherits],
-  stringr[fixed, str_c, str_replace_all],
+  stringr[fixed, str_c, str_remove, str_replace_all],
   testthat[expect_equal, expect_error, expect_false, expect_message, expect_null, expect_s3_class, expect_true, test_that],
   withr[defer, local_envvar, local_options],
 )
 
 box::use(
-  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, reasoning_args, require_lookup, wdi_source],
+  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
@@ -358,4 +358,66 @@ test_that("require_lookup() requires a tool call only for a new question without
   expect_equal(sent[[1]]$tool_choice, "required")
   expect_null(sent[[2]]$tool_choice)
   expect_null(sent[[3]]$tool_choice)
+})
+
+test_that("check_arguments() passes a JSON object and rejects anything else, showing the format", {
+  ok <- '{"indicator": "inflation_pct", "economies": "Brazil; Mexico", "start_year": 2000}'
+  expect_equal(check_arguments(ok), ok)
+  expect_equal(check_arguments(" {} "), " {} ")
+  # Some models send an object, which commons accepts
+  expect_equal(check_arguments(list(indicator = "gdp_usd")), list(indicator = "gdp_usd"))
+
+  # Seen from free models
+  bad <- c(
+    "{",
+    "{'indicator': 'inflation_pct', 'economies': 'Brazil; Mexico'}",
+    "indicator:inflation_pct,economies:Brazil; Mexico,start_year:2000",
+    "{}/* need to check args */",
+    "{} wishes to compute: inflation",
+    '"gdp_usd"'
+  )
+  for (arguments in bad) {
+    expect_error(check_arguments(arguments), "must be one JSON object", fixed = TRUE)
+    expect_error(check_arguments(arguments), str_c("You sent: ", arguments), fixed = TRUE)
+  }
+  expect_error(check_arguments("{"), '"arguments": "{\\"indicator\\": \\"gdp_usd\\"', fixed = TRUE)
+})
+
+test_that("the agent's call_measure rejects invalid arguments with the format and runs valid ones", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  agent <- new_agent("google/gemma:free", "Gemma (free)", wdi_source(panel))
+  call_measure <- agent$get_tools()$call_measure
+
+  expect_error(call_measure(name = "latest_values", arguments = "{"), "must be one JSON object", fixed = TRUE)
+  expect_null(call_measure(name = "latest_values", arguments = '{"indicator": "gdp_usd", "economies": "World"}')@error)
+})
+
+test_that("each measure is a tool of its own that runs through commons", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  agent <- new_agent("google/gemma:free", "Gemma (free)", wdi_source(panel))
+  tools <- agent$get_tools()
+
+  expect_true(all(c("latest_values", "indicator_series", "indicator_ranking", "compound_growth", "country_profile", "indicator_chart") %in% names(tools)))
+  # The model sees the measure's own arguments, not the `wdi` connection commons fills in
+  expect_equal(names(tools$latest_values@arguments@properties), c("indicator", "economies", "group"))
+
+  # The same table as through call_measure (each result gets its own run_r name, r1, r2, ...)
+  table <- function(result) str_remove(result@value, "Available to `run_r`[\\s\\S]*")
+  latest <- tools$latest_values(indicator = "gdp_usd", economies = "World")
+  expect_null(latest@error)
+  expect_match(latest@value, "|World   |WLD   | 2022|    1210|", fixed = TRUE)
+  same <- tools$call_measure(name = "latest_values", arguments = '{"indicator": "gdp_usd", "economies": "World"}')
+  expect_equal(table(latest), table(same))
+
+  # Omitted optional arguments (NULL) aren't sent; a chart keeps its chart for the user
+  chart <- tools$indicator_chart(indicator = "gdp_usd", economies = "World", start_year = NULL)
+  expect_null(chart@error)
+  expect_match(as.character(chart@extra$chart), "echarts4r", fixed = TRUE)
+
+  # Each tool runs its own measure, and the measure's checks still apply (called outside a chat, the
+  # error is thrown; in a chat ellmer returns it to the model)
+  expect_error(tools$latest_values(indicator = "happiness", economies = "World"), "Unknown indicator 'happiness'")
+  expect_error(tools$compound_growth(indicator = "gdp_usd", economies = "World"), "requires argument `start_year`")
 })
