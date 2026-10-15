@@ -1,17 +1,17 @@
 box::use(
   cachem[cache_mem],
-  checkmate[test_number],
-  httr2[req_perform, req_timeout, request, resp_body_json],
+  checkmate[test_null, test_number, test_string],
+  httr2[req_auth_bearer_token, req_perform, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
-  purrr[keep, map_chr, map_dbl, set_names],
+  purrr[compact, keep, map, map_chr, map_dbl, set_names],
   stringr[str_c, str_flatten],
 )
 
 box::use(
   . / config[
     excluded_models, fallback_model, fallback_model_label, low_priority_models, min_uptime_30m,
-    models_cache_seconds, models_url, request_timeout_seconds,
+    models_cache_seconds, models_url, request_timeout_seconds, user_models_url,
   ],
 )
 
@@ -35,11 +35,41 @@ intelligence <- function(model) {
   if (is.numeric(score) && length(score) == 1) score else NA_real_
 }
 
-get_json <- function(url) {
-  request(url) |>
+get_json <- function(url, req = request(url)) {
+  req |>
     req_timeout(request_timeout_seconds) |>
     req_perform() |>
     resp_body_json()
+}
+
+# Ids of the models the API key's account can use (OpenRouter applies its provider and privacy
+# settings), or NULL if there's no key or the request fails. The full catalogue still comes from
+# models_url: this list lacks the benchmarks and reasoning fields.
+usable_ids <- function() {
+  key <- Sys.getenv("OPENROUTER_API_KEY")
+  if (!test_string(key, min.chars = 1)) {
+    return(NULL)
+  }
+  tryCatch(
+    map_chr(get_json(user_models_url, req_auth_bearer_token(request(user_models_url), key))$data, "id"),
+    error = function(e) {
+      log_warn("Could not fetch the models this account can use: {conditionMessage(e)}")
+      NULL
+    }
+  )
+}
+
+# Drop the models the account can't use (see usable_ids()); keeps them all when that list is missing
+keep_usable <- function(models) {
+  usable <- usable_ids()
+  if (test_null(usable)) {
+    return(models)
+  }
+  dropped <- setdiff(map_chr(models, "id"), usable)
+  if (length(dropped) > 0) {
+    log_info("Left out as unusable with this account's provider settings: {str_flatten(dropped, ', ')}")
+  }
+  keep(models, \(m) m$id %in% usable)
 }
 
 # Share (%) of requests the model's best provider answered in the last 30 minutes, or NA when
@@ -87,6 +117,7 @@ fetch_free_models <- function(tools_only = FALSE) {
   free <- keep(models$data, \(m) {
     is_free(m) && is_text_only(m) && !m$id %in% excluded_models && (!tools_only || supports_tools(m))
   })
+  free <- keep_usable(free)
   if (length(free) == 0) {
     stop("No free text models in the response")
   }
@@ -115,5 +146,52 @@ free_models <- function(fetch = cached_fetch, tools_only = FALSE) {
   tryCatch(fetch(tools_only = tools_only), error = function(e) {
     log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
     set_names(fallback_model, fallback_model_label)
+  })
+}
+
+# Reasoning effort levels the model offers (OpenRouter's `reasoning.supported_efforts`, highest first)
+# and its default effort, or NULL when it has no effort selection. "none" is left out when the model
+# always reasons (`mandatory`), since it rejects that effort.
+model_reasoning <- function(model) {
+  reasoning <- model$reasoning
+  efforts <- as.character(unlist(reasoning$supported_efforts))
+  if (isTRUE(reasoning$mandatory)) {
+    efforts <- setdiff(efforts, "none")
+  }
+  if (length(efforts) == 0) {
+    return(NULL)
+  }
+  default <- reasoning$default_effort
+  list(efforts = efforts, default = if (test_string(default) && default %in% efforts) default else efforts[[1]])
+}
+
+# OpenRouter's effort levels, highest first
+effort_levels <- c("max", "xhigh", "high", "medium", "low", "minimal", "none")
+
+#' The level among `efforts` closest to `effort`, as OpenRouter maps an effort a model doesn't offer
+#' (the higher one on a tie).
+#' @export
+nearest_effort <- function(effort, efforts) {
+  distance <- abs(match(efforts, effort_levels) - match(effort, effort_levels))
+  efforts[[which.min(distance)]]
+}
+
+#' Reasoning effort options of every OpenRouter model that has them, uncached: a list named by model
+#' id of `list(efforts =, default =)` (see model_reasoning()). Errors if the request fails.
+#' @export
+fetch_reasoning_options <- function() {
+  models <- get_json(models_url)$data
+  compact(set_names(map(models, model_reasoning), map_chr(models, "id")))
+}
+
+cached_reasoning <- memoise(fetch_reasoning_options, cache = cache_mem(max_age = models_cache_seconds))
+
+#' Reasoning effort options by model id (see fetch_reasoning_options()), cached like free_models();
+#' an empty list if they can't be fetched, so every model keeps its default effort.
+#' @export
+reasoning_options <- function(fetch = cached_reasoning) {
+  tryCatch(fetch(), error = function(e) {
+    log_warn("Could not fetch OpenRouter reasoning options: {conditionMessage(e)}")
+    list()
   })
 }

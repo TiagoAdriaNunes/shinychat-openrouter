@@ -1,6 +1,6 @@
 box::use(
   coro[async_generator, await, yield],
-  ellmer[AssistantTurn, ContentText],
+  ellmer[AssistantTurn, ContentText, UserTurn],
   httr2[local_mocked_responses, req_perform, request, response],
   promises[promise_resolve],
   rlang[error_cnd],
@@ -10,7 +10,7 @@ box::use(
 )
 
 box::use(
-  app / logic / client[error_message, format_stats, new_client, response_stats, safe_stream],
+  app / logic / client[error_message, format_stats, new_client, response_stats, response_turns, safe_stream, scan_text, set_reasoning_effort],
   app / logic / config[error_messages],
 )
 
@@ -137,4 +137,98 @@ test_that("format_stats() summarises a response on one line", {
 
   expect_equal(format_stats(list(model = "Gemma", ok = TRUE, seconds = 1)), "Gemma · 1.0 s")
   expect_equal(format_stats(list(model = "Gemma", ok = FALSE, seconds = 8.06)), "Gemma · incomplete after 8.1 s")
+})
+
+test_that("set_reasoning_effort() sends the effort with later requests until it's reset", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(ellmer_max_tries = 1)
+  sent <- list()
+  local_mocked_responses(function(req) {
+    sent[[length(sent) + 1]] <<- req$body$data
+    response(status_code = 503)
+  })
+  ask <- function(client) {
+    collect_stream(client$stream_async(!!!list("Hi"), stream = "content"))
+    sent[[length(sent)]]
+  }
+  client <- new_client("a/alpha:free", system_prompt = "Be brief.")
+
+  expect_null(ask(client)$reasoning)
+  set_reasoning_effort(client, "high")
+  expect_equal(ask(client)$reasoning, list(effort = "high"))
+  # It stays when the model changes (callers reset it)
+  client$set_model("c/gamma:free")
+  request <- ask(client)
+  expect_equal(request$model, "c/gamma:free")
+  expect_equal(request$reasoning, list(effort = "high"))
+  set_reasoning_effort(client, NULL)
+  expect_null(ask(client)$reasoning)
+})
+
+test_that("response_stats() adds up the tokens of every request in the response, with thinking tokens", {
+  turn <- function(input, output, thinking = NULL) {
+    usage <- if (!is.null(thinking)) list(completion_tokens_details = list(reasoning_tokens = thinking))
+    AssistantTurn(
+      list(ContentText("Hi")),
+      json = list(usage = usage),
+      tokens = c(input = input, output = output, cached_input = 0)
+    )
+  }
+  first <- turn(100, 20, thinking = 15)
+  last <- turn(300, 50, thinking = 10)
+
+  stats <- response_stats("Gemma", "google/gemma:free", 2, last, NULL, turns = list(first, last))
+  expect_equal(stats$requests, 2)
+  expect_equal(c(stats$input_tokens, stats$output_tokens, stats$thinking_tokens), c(400, 70, 25))
+  expect_equal(format_stats(stats), "Gemma · 2.0 s · 2 requests · 400 in / 70 out tokens (25 thinking) · 35 tokens/s")
+
+  # No thinking figure: none shown
+  plain <- response_stats("Gemma", "google/gemma:free", 2, turn(25, 186), NULL)
+  expect_null(plain$thinking_tokens)
+  expect_equal(format_stats(plain), "Gemma · 2.0 s · 25 in / 186 out tokens · 93 tokens/s")
+})
+
+test_that("response_turns() lists the assistant turns of the last round", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  client <- new_client("a/alpha:free", system_prompt = "Be brief.")
+  expect_equal(response_turns(client), list())
+
+  reply <- function(text) AssistantTurn(list(ContentText(text)), tokens = c(input = 1, output = 1, cached_input = 0))
+  client$set_turns(list(UserTurn("Q1"), reply("A1"), UserTurn("Q2"), reply("A2")))
+  turns <- response_turns(client)
+  expect_equal(length(turns), 1)
+  expect_equal(turns[[1]]@text, "A2")
+})
+
+test_that("scan_text() cuts reply text at a control token and holds back a possible start of one", {
+  expect_equal(scan_text("Plain text"), list(show = "Plain text", garbled = FALSE, held = ""))
+  expect_equal(
+    scan_text("$2.28 trillion.<|tool_call_begin|><|tool_calls_section_begin|>"),
+    list(show = "$2.28 trillion.", garbled = TRUE, held = "")
+  )
+  expect_equal(scan_text("Done <|tool_ca"), list(show = "Done ", garbled = FALSE, held = "<|tool_ca"))
+  expect_equal(scan_text("a <"), list(show = "a ", garbled = FALSE, held = "<"))
+  # Not tokens: R's pipe and comparisons
+  expect_equal(scan_text("x |> f() and a <= b"), list(show = "x |> f() and a <= b", garbled = FALSE, held = ""))
+})
+
+test_that("safe_stream() stops a reply that turns into control tokens, keeping the answer before them", {
+  garbage <- list(
+    "Brazil's GDP was $2.28 trillion.",
+    "<|tool_call_begin|><|tool",
+    "_calls_section_begin|>",
+    "never shown"
+  )
+  text <- collect_stream(safe_stream(fake_stream(garbage), "Nemotron"))
+  expect_equal(
+    text,
+    str_c("Brazil's GDP was $2.28 trillion.", "\n\n", expected(error_messages$garbled, "Nemotron"))
+  )
+
+  # A token split across chunks is caught without showing its start
+  split <- collect_stream(safe_stream(fake_stream(list("Hi <|tool", "_call_begin|> junk")), "Nemotron"))
+  expect_equal(split, str_c("Hi ", "\n\n", expected(error_messages$garbled, "Nemotron")))
+
+  # A "<" that isn't a token is passed on
+  expect_equal(collect_stream(safe_stream(fake_stream(list("a <", " b")), "Nemotron")), "a < b")
 })

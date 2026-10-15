@@ -28,6 +28,12 @@ source_url <- settings$app$source_url
 show_response_stats <- isTRUE(settings$app$show_response_stats)
 
 #' @export
+effort_label <- settings$app$effort_label
+
+#' @export
+effort_default_label <- settings$app$effort_default_label
+
+#' @export
 system_prompt <- settings$chat$system_prompt
 
 #' @export
@@ -38,6 +44,9 @@ fallback_model_label <- settings$openrouter$fallback_model_label
 
 #' @export
 models_url <- settings$openrouter$models_url
+
+#' @export
+user_models_url <- settings$openrouter$user_models_url
 
 #' @export
 models_page_url <- settings$openrouter$models_page_url

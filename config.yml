@@ -19,6 +19,12 @@ default:
     source_url: "https://github.com/TiagoAdriaNunes/shinychat-openrouter/"
     # Line under the input with the last response's model, time and token counts
     show_response_stats: true
+    # Reasoning effort dropdown next to the model: the levels the selected model offers (OpenRouter's
+    # `reasoning.supported_efforts`), starting at the model's default each time a model is picked
+    # (World Bank data mode starts at world_bank.reasoning_effort instead).
+    # Greyed out, showing effort_default_label, for models without effort levels.
+    effort_label: "Effort:"
+    effort_default_label: "Default"
 
   chat:
     # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
@@ -44,6 +50,11 @@ default:
     fallback_model_label: "Free Models Router"
     # Public model catalogue (no API key needed); free models have zero prompt and completion pricing
     models_url: "https://openrouter.ai/api/v1/models"
+    # The models this app's API key can use: the catalogue filtered by the account's provider and
+    # privacy settings (https://openrouter.ai/settings/privacy). Free models whose only providers the
+    # account ignores (e.g. Gemma 4: "All providers have been ignored", HTTP 404) are left out of the
+    # dropdown. Needs the API key; if it can't be fetched, nothing is filtered.
+    user_models_url: "https://openrouter.ai/api/v1/models/user"
     models_page_url: "https://openrouter.ai/collections/free-models"
     # How long the fetched model list is reused before asking OpenRouter again
     models_cache_seconds: 3600
@@ -84,11 +95,26 @@ default:
       <span class="suggestion">Which countries have the highest inflation?</span>
       <span class="suggestion">How has India's population changed since 2000?</span>
       <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
+      <span class="suggestion">Plot inflation in Brazil and Mexico since 2000</span>
     unavailable: "World Bank data isn't available right now. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
     # the first start. The mode turns on when the download ends; picking Chat cancels the wait.
     loading: "Downloading the World Bank data, about 30 seconds. This mode turns on by itself when it is ready."
+    # Error returned to the model when call_measure's `arguments` isn't one JSON object (e.g. single
+    # quotes, bare key: value pairs, or a cut-off "{"). {received} is what it sent.
+    invalid_arguments: >-
+      Rejected: `arguments` must be one JSON object, written as text, with double quotes around every
+      name and text value, e.g. {{"indicator": "gdp_usd", "economies": "Brazil", "start_year": 2000}}.
+      Inside the tool call that text is a JSON string, so escape its quotes:
+      "arguments": "{{\"indicator\": \"gdp_usd\", \"economies\": \"Brazil\"}}".
+      You sent: {received}
+      Call call_measure again with the complete arguments, or call the measure's own tool (e.g.
+      latest_values) with its arguments as fields.
+    # Put before the description of each optional measure argument in the measure tools: OpenRouter
+    # schemas list every argument as required (optional ones accept null), and a model once sent
+    # group "{}" because it thought it had to give one.
+    optional_argument: "Optional: send null to leave it out (the usual case), a value only when the question needs it."
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
     lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
@@ -104,6 +130,11 @@ default:
       - name: gdp_growth_pct
         code: NY.GDP.MKTP.KD.ZG
         description: "GDP growth (annual %), constant prices"
+      # Real GDP level: total growth between two years is its change (compound_growth), not a sum of
+      # the yearly gdp_growth_pct rates
+      - name: gdp_constant_usd
+        code: NY.GDP.MKTP.KD
+        description: "GDP (constant 2015 US$), real GDP without inflation"
       - name: gdp_per_capita_usd
         code: NY.GDP.PCAP.CD
         description: "GDP per capita (current US$)"
@@ -135,6 +166,55 @@ default:
         code: SI.POV.GINI
         description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
     start_year: 1990
+    # Country groups the measures can filter by (`group` argument), as the agent's `groups` table.
+    # The World Bank data has these groups' totals (aggregates) but not their members. Current
+    # membership, applied to every year: update it when a country joins or leaves.
+    groups:
+      - name: "Euro area"
+        description: "Countries using the euro (21 since Bulgaria joined on 1 January 2026)"
+        members: [AUT, BEL, BGR, HRV, CYP, EST, FIN, FRA, DEU, GRC, IRL, ITA, LVA, LTU, LUX, MLT, NLD, PRT, SVK, SVN, ESP]
+      - name: "European Union"
+        description: "The 27 EU member states"
+        members: [AUT, BEL, BGR, HRV, CYP, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, IRL, ITA, LVA, LTU, LUX, MLT, NLD, POL, PRT, ROU, SVK, SVN, ESP, SWE]
+      - name: "G7"
+        description: "Group of Seven"
+        members: [CAN, FRA, DEU, ITA, JPN, GBR, USA]
+      - name: "G20"
+        description: "The 19 G20 member countries (the EU and African Union members are not listed)"
+        members: [ARG, AUS, BRA, CAN, CHN, FRA, DEU, IND, IDN, ITA, JPN, KOR, MEX, RUS, SAU, ZAF, TUR, GBR, USA]
+      - name: "OECD"
+        description: "The 38 OECD member countries"
+        members: [AUS, AUT, BEL, CAN, CHL, COL, CRI, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, ISL, IRL, ISR, ITA, JPN, KOR, LVA, LTU, LUX, MEX, NLD, NZL, NOR, POL, PRT, SVK, SVN, ESP, SWE, CHE, TUR, GBR, USA]
+      - name: "Mercosur"
+        description: "Southern Common Market full members (Bolivia since 2024; Venezuela is suspended and not listed)"
+        members: [ARG, BRA, PRY, URY, BOL]
+      - name: "BRICS"
+        description: "BRICS members (Indonesia since 2025; Saudi Arabia hasn't confirmed and is not listed)"
+        members: [BRA, RUS, IND, CHN, ZAF, EGY, ETH, IRN, ARE, IDN]
+      - name: "ASEAN"
+        description: "Association of Southeast Asian Nations (Timor-Leste since 2025)"
+        members: [BRN, KHM, IDN, LAO, MYS, MMR, PHL, SGP, THA, VNM, TLS]
+      - name: "USMCA"
+        description: "United States-Mexico-Canada Agreement (formerly NAFTA)"
+        members: [USA, MEX, CAN]
+      - name: "Pacific Alliance"
+        description: "Pacific Alliance members"
+        members: [CHL, COL, MEX, PER]
+      - name: "Andean Community"
+        description: "Andean Community (CAN) members"
+        members: [BOL, COL, ECU, PER]
+      - name: "GCC"
+        description: "Gulf Cooperation Council"
+        members: [BHR, KWT, OMN, QAT, SAU, ARE]
+      - name: "OPEC"
+        description: "OPEC members (Angola left in 2024)"
+        members: [DZA, COG, GNQ, GAB, IRN, IRQ, KWT, LBY, NGA, SAU, ARE, VEN]
+      - name: "EFTA"
+        description: "European Free Trade Association"
+        members: [ISL, LIE, NOR, CHE]
+      - name: "Nordic countries"
+        description: "Denmark, Finland, Iceland, Norway and Sweden"
+        members: [DNK, FIN, ISL, NOR, SWE]
     # The download takes about 30 seconds, so it is saved here and reused until it is older than
     # cache_days (an older copy is still used if a new download fails)
     cache_file: "cache/wdi.rds"
@@ -155,27 +235,54 @@ default:
     # that are NOT a security boundary: only for local development (see the `development` section).
     allow_unsafe_fallback: false
     # How much the model thinks before each step (OpenRouter `reasoning.effort`: none, minimal, low,
-    # medium, high, xhigh). The agent mostly picks a measure and reads a small table, so a low effort
-    # answers much faster. Models without adjustable reasoning ignore it. Empty to use each model's default.
+    # medium, high, xhigh, max). The agent mostly picks a measure and reads a small table, so a low
+    # effort answers faster and better than the models' own defaults. Sent to every model in this mode
+    # and used again whenever a model is picked (the effort dropdown can change it); models without
+    # that level get the nearest one. Empty to use each model's default.
     reasoning_effort: "low"
+    # Make the model call a tool on the first request for each new question (OpenRouter
+    # `tool_choice: required`), so it looks the data up instead of answering from memory. Some free
+    # models ignore it; replies that still skip the data are retried and then dropped (lookup_nudge,
+    # no_lookup).
+    require_lookup: true
     # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
     # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
     # role and the trusted-calculation workflow, and data knowledge belongs in the data dictionary
     # (app/logic/agent.R), the measures (app/measures/) and the context notes (app/context/).
     # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
     # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
-    # {indicators} is replaced with the indicator names above.
+    # {indicators} and {groups} are replaced with the indicator and group names above.
+    # Replace commons' descriptions of these tools, which say to run search_pool before any data
+    # question: that contradicts `instructions`, which list the measures to call directly, and a
+    # reasoning model once looped between the two rules without ever calling a tool. Each measure
+    # is also a tool of its own (see measure_tools() in app/logic/agent.R).
+    tool_descriptions:
+      search_pool: >-
+        Search the semantic layer's trusted calculations (measures). The measures listed in your
+        instructions are tools of their own and need no search: call them right away. Use this only
+        for a data question none of them answers, before any other data tool.
+      call_measure: >-
+        Run a trusted calculation (measure) returned by search_pool. The measures listed in your
+        instructions are tools of their own: call those directly instead. `arguments` is a JSON object
+        using exactly the measure's argument names.
+        Prefer a measure's own arguments when they can answer the question directly. Measure results
+        may be displayed directly to the user. If a result says it is already visible, do not
+        reproduce it in your reply; summarize or interpret the relevant results instead.
     instructions: |
       Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
       Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
       "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
-      These are all the trusted measures, so call them directly with call_measure; use search_pool only for questions none of them answers:
-      - latest_values(indicator, economies): the latest value for countries or regions ("What is Brazil's GDP?").
-      - indicator_series(indicator, economies, start_year?, end_year?): values over time.
-      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
-      - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
+      These are all the trusted measures, each a tool of its own: call it directly with its arguments, e.g. the latest_values tool with indicator "gdp_usd" and economies "Brazil". For questions none of them answers, use search_pool:
+      - latest_values(indicator, economies?, group?): the latest value for countries or regions ("What is Brazil's GDP?").
+      - indicator_series(indicator, economies?, start_year?, end_year?, group?): values over time.
+      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?, group?): top or bottom countries.
+      - compound_growth(indicator, economies?, start_year, end_year, group?): total and average annual growth of an amount between two years, highest first ("Which eurozone countries grew most since 2020?": gdp_constant_usd, group "Euro area", start_year 2020).
       - country_profile(economy, year?): one country's latest value of every indicator and its rank among countries ("Brazil's worst indicator", "overview of India").
+      - indicator_chart(indicator, economies?, start_year?, end_year?, group?): shows the user an interactive line chart over time ("Plot inflation in Brazil over the years").
+      For any chart, plot or graph request call indicator_chart, then comment on it in a sentence or two. Never draw plots in run_r: you cannot read images.
       `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
+      `group` selects the member countries of one of: {groups}. Use it whenever the user names one of these groups ("euro countries", "eurozone", "EU", "Mercosur"); a World Bank region is a different, wider set. In `economies`, "Euro area" or "European Union" is the group's total, not its countries.
+      Real growth over several years: compound_growth with gdp_constant_usd, never by adding or compounding gdp_growth_pct yourself.
       In run_r, pipe with |> (never %>%) and load a package before using its functions, e.g. library(dplyr).
       State the year of every figure.
       Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.
@@ -189,6 +296,9 @@ default:
     unavailable: "**{model} is not available in this app.** Please select a different model from the dropdown below and send your message again."
     # Anything else (provider down, timeout, dropped connection)
     failed: "**{model} didn't respond.** Please try again, or select a different model from the dropdown below."
+    # The model started writing its internal control tokens (e.g. <|tool_call_begin|>) as text, usually
+    # over and over: the reply is cut there
+    garbled: "**{model} started writing garbled text, so its reply was stopped here.** If the answer above is incomplete, please try again or select a different model from the dropdown below."
 
   # Any bslib theme variable can go here; see ?shinychat::page_chat_theme
   theme:

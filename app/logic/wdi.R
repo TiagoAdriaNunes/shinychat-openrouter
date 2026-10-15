@@ -1,7 +1,7 @@
 box::use(
   cachem[cache_mem],
   callr[r_bg],
-  checkmate[test_file_exists, test_null],
+  checkmate[test_file_exists, test_null, test_subset],
   logger[log_info, log_warn],
   memoise[forget, memoise],
   purrr[map, map_chr, set_names],
@@ -63,7 +63,12 @@ fetch_wdi <- function() {
 
 file_age_days <- function(path) as.numeric(difftime(Sys.time(), file.mtime(path), units = "days"))
 
-is_fresh <- function(path, max_age_days) test_file_exists(path) && file_age_days(path) < max_age_days
+# A cache saved before an indicator was added to config.yml lacks its column, so it is downloaded again
+has_indicators <- function(panel) test_subset(names(indicator_codes), names(panel$countries))
+
+is_fresh <- function(path, max_age_days) {
+  test_file_exists(path) && file_age_days(path) < max_age_days && has_indicators(readRDS(path))
+}
 
 # The background download started by start_wdi_download(), if any (one per R process)
 background <- new.env()
