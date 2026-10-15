@@ -24,6 +24,8 @@ test_that("ui() renders the model dropdown with the default model", {
   expect_match(html, 'id="chat_model"', fixed = TRUE)
   expect_match(html, 'value="openrouter/free"', fixed = TRUE)
   expect_match(html, 'id="chat_stats"', fixed = TRUE)
+  # Effort dropdown, greyed out until the server fills it in
+  expect_match(html, '<select id="chat_effort" class="shiny-input-select form-select form-select-sm w-auto py-0" style="font-size: inherit;" disabled>', fixed = TRUE)
   expect_match(html, 'id="chat_mode"', fixed = TRUE)
   # Mode tabs: a radio input with a pill per mode, plain chat selected
   expect_match(html, 'name="chat_mode" id="chat_mode_chat" value="chat" autocomplete="off" checked', fixed = TRUE)
@@ -40,7 +42,7 @@ test_that("server() starts with the first (most intelligent) model, switches to 
 
   testServer(
     function(input, output, session) {
-      result <- chat$server("chat", models = fake_models, agent_models = fake_tool_models)
+      result <- chat$server("chat", models = fake_models, agent_models = fake_tool_models, efforts = fake_efforts)
     },
     {
       expect_equal(result$model(), "b/beta:free")
@@ -73,6 +75,7 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
         "chat",
         models = fake_models,
         agent_models = fake_tool_models,
+        efforts = fake_efforts,
         world_bank_data = world_bank_data
       )
     },
@@ -114,6 +117,7 @@ test_that("World Bank data mode waits while the data is downloading, then turns 
         "chat",
         models = fake_models,
         agent_models = fake_tool_models,
+        efforts = fake_efforts,
         world_bank_data = function() if (downloading) NULL else fake_panel(),
         data_loading = function() downloading
       )
@@ -150,6 +154,7 @@ test_that("World Bank data mode stays off when the data can't be loaded", {
         "chat",
         models = fake_models,
         agent_models = fake_tool_models,
+        efforts = fake_efforts,
         world_bank_data = function() NULL
       )
     },
@@ -186,6 +191,7 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
         "chat",
         models = fake_models,
         agent_models = fake_tool_models,
+        efforts = fake_efforts,
         world_bank_data = function() fake_panel()
       )
     },
@@ -218,6 +224,7 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       expect_match(agent$system, "## Additional instructions", fixed = TRUE)
       expect_match(agent$system, "Answer only from the data", fixed = TRUE)
       expect_false(grepl(system_prompt, agent$system, fixed = TRUE))
+      # The agent sends the World Bank effort, not the model's default
       expect_equal(agent$reasoning$effort, world_bank$reasoning_effort)
 
       # Changing model keeps the agent
@@ -225,11 +232,28 @@ test_that("World Bank data mode sends the commons agent's prompt and tools, plai
       changed <- ask("GDP of Chile?")
       expect_equal(changed$model, "c/gamma:free")
       expect_true("call_measure" %in% changed$tools)
+      expect_equal(changed$reasoning$effort, world_bank$reasoning_effort)
 
+      # The dropdown sends back the World Bank effort, then a picked effort goes with the next requests
+      session$setInputs(chat_effort = world_bank$reasoning_effort)
+      session$setInputs(chat_effort = "high")
+      effort <- ask("GDP of Peru?")
+      expect_equal(effort$reasoning$effort, "high")
+      expect_true("call_measure" %in% effort$tools)
+      # Levels the model doesn't offer are ignored
+      session$setInputs(chat_effort = "max")
+      expect_equal(ask("GDP of Peru?")$reasoning$effort, "high")
+
+      # Switching mode keeps the model (Gamma is in both lists) and its effort
       session$setInputs(chat_mode = "chat")
       back <- ask("Hi again")
       expect_equal(length(back$tools), 0)
       expect_equal(back$system, system_prompt)
+      expect_equal(back$reasoning$effort, "high")
+
+      # Another model goes back to its default in plain chat
+      session$setInputs(chat_model = "a/alpha:free")
+      expect_null(ask("Hi")$reasoning)
     }
   )
 })

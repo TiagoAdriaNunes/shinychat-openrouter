@@ -2,23 +2,24 @@ box::use(
   bslib[input_dark_mode, toolbar],
   checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
+  purrr[set_names],
   shiny[
-    getDefaultReactiveDomain, icon, invalidateLater, observe, observeEvent, reactive, reactiveVal,
+    getDefaultReactiveDomain, HTML, icon, invalidateLater, observe, observeEvent, reactive, reactiveVal,
     removeNotification, renderText, req, showNotification, tagList, tags, textOutput,
     updateRadioButtons, updateSelectInput,
   ],
   shinychat[chat_server, page_chat],
-  stringr[str_c, str_detect],
+  stringr[str_c, str_detect, str_to_sentence],
 )
 
 box::use(
   .. / logic / agent[new_agent, wdi_source],
   .. / logic / config[
-    app_title, chat_mode_label, disclaimer, fallback_model, fallback_model_label, greeting, models_page_url,
-    placeholder, show_response_stats, source_url, system_prompt, world_bank,
+    app_title, chat_mode_label, disclaimer, effort_default_label, effort_label, fallback_model, fallback_model_label,
+    greeting, models_page_url, placeholder, show_response_stats, source_url, system_prompt, world_bank,
   ],
-  .. / logic / client[format_stats, new_client, response_stats],
-  .. / logic / models[free_models],
+  .. / logic / client[format_stats, new_client, response_stats, set_reasoning_effort],
+  .. / logic / models[free_models, nearest_effort, reasoning_options],
   .. / logic / theme[chat_theme],
   .. / logic / wdi[wdi_downloading, wdi_panel],
 )
@@ -58,6 +59,7 @@ mode_tabs <- function(id) {
   )
 }
 model_input_id <- function(id) str_c(id, "_model")
+effort_input_id <- function(id) str_c(id, "_effort")
 stats_output_id <- function(id) str_c(id, "_stats")
 
 # page_chat() owns the whole page, so this module is not namespaced: the same
@@ -90,6 +92,20 @@ ui <- function(id) {
         style = "font-size: inherit;",
         tags$option(value = fallback_model, selected = NA, fallback_model_label)
       ),
+      # Reasoning effort levels of the selected model, filled in by the server; greyed out (disabled)
+      # for models without effort levels
+      tags$label(`for` = effort_input_id(id), class = "mb-0", effort_label),
+      tags$select(
+        id = effort_input_id(id),
+        class = "shiny-input-select form-select form-select-sm w-auto py-0",
+        style = "font-size: inherit;",
+        disabled = NA,
+        tags$option(value = "", selected = NA, effort_default_label)
+      ),
+      # Shiny can't disable a select input, so the server sends this message
+      tags$script(HTML(
+        "Shiny.addCustomMessageHandler('disable-input', m => { document.getElementById(m.id).disabled = m.disabled; });"
+      )),
       tags$span(
         "via ",
         external_link(models_page_url, "OpenRouter"),
@@ -118,7 +134,8 @@ ui <- function(id) {
 # `models` is a named character vector of allowed models (label = name, value = id) for plain chat;
 # `agent_models` the same for World Bank data mode (models with tool calling). `world_bank_data`
 # returns the World Bank panel or NULL, and is only called when that mode is first turned on;
-# `data_loading` returns TRUE while that data is still downloading in the background.
+# `data_loading` returns TRUE while that data is still downloading in the background. `efforts` holds
+# the reasoning effort levels and default of each model that has them (see reasoning_options()).
 # Returns a list of reactives: `model` (id of the model in use), `world_bank` (TRUE in World Bank
 # data mode) and `stats` (last response's stats or NULL).
 #' @export
@@ -128,6 +145,7 @@ server <- function(
   agent_models = free_models(tools_only = TRUE),
   world_bank_data = wdi_panel,
   data_loading = wdi_downloading,
+  efforts = reasoning_options(),
   session = getDefaultReactiveDomain()
 ) {
   input <- session$input
@@ -136,12 +154,42 @@ server <- function(
   initial_model <- unname(models[[1]])
   updateSelectInput(session, model_input_id(id), choices = models, selected = initial_model)
 
+  agent_mode <- reactiveVal(FALSE)
+  # Reasoning effort picked for the current model; NULL is the mode's effort: the model's default
+  # (none sent) in plain chat, world_bank$reasoning_effort for the agent (see new_agent())
+  effort <- NULL
+  mode_effort <- function() {
+    if (agent_mode() && test_string(world_bank$reasoning_effort, min.chars = 1)) world_bank$reasoning_effort
+  }
+  # The level the dropdown shows for the mode's effort: what OpenRouter uses for this model
+  default_effort <- function(model) {
+    options <- efforts[[model]]
+    if (test_null(options)) {
+      ""
+    } else if (test_null(mode_effort())) {
+      options$default
+    } else {
+      nearest_effort(mode_effort(), options$efforts)
+    }
+  }
+  # The effort dropdown lists the model's levels, starting at its default; greyed out if it has none
+  show_efforts <- function(model) {
+    options <- efforts[[model]]
+    choices <- if (test_null(options)) {
+      set_names("", effort_default_label)
+    } else {
+      set_names(options$efforts, str_to_sentence(options$efforts))
+    }
+    updateSelectInput(session, effort_input_id(id), choices = choices, selected = effort %||% default_effort(model))
+    session$sendCustomMessage("disable-input", list(id = effort_input_id(id), disabled = test_null(options)))
+  }
+  show_efforts(initial_model)
+
   stats <- reactiveVal(NULL)
   output[[stats_output_id(id)]] <- renderText({
     if (!test_null(stats())) format_stats(stats())
   })
 
-  agent_mode <- reactiveVal(FALSE)
   current_model <- reactiveVal(initial_model)
   # World Bank data and its duckdb source, loaded the first time the mode is turned on and shared
   # by every agent in this session
@@ -180,14 +228,25 @@ server <- function(
     current_model(model)
   }
 
+  # A new model starts at the mode's reasoning effort
   set_model <- function(model) {
     client$set_model(model)
+    effort <<- NULL
+    set_reasoning_effort(client, mode_effort())
     current_model(model)
+    show_efforts(model)
     log_info("Switched model to {model}")
   }
 
-  # A model picked during a response is applied once it finishes, so one turn uses one model
+  set_effort <- function(value) {
+    effort <<- value
+    set_reasoning_effort(client, value)
+    log_info("Set reasoning effort to {value}")
+  }
+
+  # A model or effort picked during a response is applied once it finishes, so one turn uses one setting
   pending_model <- NULL
+  pending_effort <- NULL
   started <- NULL
   observeEvent(chat$status(), {
     if (chat$status() == "streaming") {
@@ -216,7 +275,10 @@ server <- function(
     if (!test_null(pending_model)) {
       set_model(pending_model)
       pending_model <<- NULL
+    } else if (!test_null(pending_effort)) {
+      set_effort(pending_effort)
     }
+    pending_effort <<- NULL
   })
 
   observeEvent(input[[model_input_id(id)]], ignoreInit = TRUE, {
@@ -232,6 +294,19 @@ server <- function(
     # Also sent back after a mode switch updates the dropdown
     req(model != current_model())
     set_model(model)
+  })
+
+  observeEvent(input[[effort_input_id(id)]], ignoreInit = TRUE, {
+    value <- input[[effort_input_id(id)]]
+    # Also sent back when the dropdown is filled in, and "" while it's greyed out
+    req(value %in% efforts[[current_model()]]$efforts)
+    applied <- effort %||% default_effort(current_model())
+    if (chat$status() == "streaming") {
+      pending_effort <<- if (value == applied) NULL else value
+      req(FALSE)
+    }
+    req(value != applied)
+    set_effort(value)
   })
 
   # Plain chat <-> World Bank data. A plain chat can't replay the agent's tool calls, so switching
@@ -273,8 +348,17 @@ server <- function(
 
     agent_mode(on)
     pending_model <<- NULL
+    pending_effort <<- NULL
+    # The new client starts at the mode's effort: keep the one picked if the model stays
+    if (model != current_model()) {
+      effort <<- NULL
+    }
     use_client(new_client, model)
+    if (!test_null(effort)) {
+      set_reasoning_effort(client, effort)
+    }
     updateSelectInput(session, model_input_id(id), choices = choices, selected = model)
+    show_efforts(model)
     # Each mode's greeting (World Bank data mode's has clickable example questions)
     chat$clear()
     chat$set_greeting(if (on) world_bank$greeting else greeting)

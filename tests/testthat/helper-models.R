@@ -12,7 +12,8 @@ fake_model <- function(
   output = list("text"),
   intelligence = NULL,
   created = 0,
-  tools = FALSE
+  tools = FALSE,
+  reasoning = NULL
 ) {
   list(
     id = id,
@@ -21,18 +22,33 @@ fake_model <- function(
     supported_parameters = if (tools) list("temperature", "tools") else list("temperature"),
     pricing = list(prompt = prompt, completion = completion),
     architecture = list(output_modalities = output),
-    benchmarks = list(artificial_analysis = list(intelligence_index = intelligence))
+    benchmarks = list(artificial_analysis = list(intelligence_index = intelligence)),
+    reasoning = reasoning
   )
 }
 
 fake_catalogue <- list(
   data = list(
     fake_model("d/delta:free", "Delta (free)", created = 100),
-    fake_model("a/alpha:free", "Alpha (free)", intelligence = 10L, tools = TRUE),
+    fake_model(
+      "a/alpha:free",
+      "Alpha (free)",
+      intelligence = 10L,
+      tools = TRUE,
+      # Always reasons, so "none" isn't offered; no default effort given
+      reasoning = list(mandatory = TRUE, supported_efforts = list("high", "none"))
+    ),
     # The router is in excluded_models too (it can pick excluded models)
     fake_model("openrouter/free", "Free Models Router"),
-    fake_model("b/beta:free", "Beta (free)", intelligence = 30.5),
-    fake_model("c/gamma:free", "Gamma (free)", created = 200, tools = TRUE),
+    # Reasoning that can be turned on but has no effort levels
+    fake_model("b/beta:free", "Beta (free)", intelligence = 30.5, reasoning = list(default_enabled = TRUE)),
+    fake_model(
+      "c/gamma:free",
+      "Gamma (free)",
+      created = 200,
+      tools = TRUE,
+      reasoning = list(mandatory = FALSE, supported_efforts = list("high", "medium", "low"), default_effort = "medium")
+    ),
     fake_model("p/paid", "Paid", prompt = "0.000001", completion = "0.000002", intelligence = 99, tools = TRUE),
     fake_model("m/music", "Music (free)", output = list("text", "audio")),
     # Listed in excluded_models in config.yml
@@ -56,6 +72,12 @@ fake_tool_models <- c(
   "Alpha (free)" = "a/alpha:free",
   "Gamma (free)" = "c/gamma:free",
   "Ling" = "inclusionai/ling-3.1-flash"
+)
+
+# reasoning_options() for fake_catalogue: the models with effort levels, in catalogue order
+fake_efforts <- list(
+  "a/alpha:free" = list(efforts = "high", default = "high"),
+  "c/gamma:free" = list(efforts = c("high", "medium", "low"), default = "medium")
 )
 
 # Mock for httr2::local_mocked_responses(): the catalogue, and for <models_url>/<id>/endpoints one
