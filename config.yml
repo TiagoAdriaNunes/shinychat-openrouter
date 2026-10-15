@@ -105,6 +105,11 @@ default:
       - name: gdp_growth_pct
         code: NY.GDP.MKTP.KD.ZG
         description: "GDP growth (annual %), constant prices"
+      # Real GDP level: total growth between two years is its change (compound_growth), not a sum of
+      # the yearly gdp_growth_pct rates
+      - name: gdp_constant_usd
+        code: NY.GDP.MKTP.KD
+        description: "GDP (constant 2015 US$), real GDP without inflation"
       - name: gdp_per_capita_usd
         code: NY.GDP.PCAP.CD
         description: "GDP per capita (current US$)"
@@ -136,6 +141,55 @@ default:
         code: SI.POV.GINI
         description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
     start_year: 1990
+    # Country groups the measures can filter by (`group` argument), as the agent's `groups` table.
+    # The World Bank data has these groups' totals (aggregates) but not their members. Current
+    # membership, applied to every year: update it when a country joins or leaves.
+    groups:
+      - name: "Euro area"
+        description: "Countries using the euro (21 since Bulgaria joined on 1 January 2026)"
+        members: [AUT, BEL, BGR, HRV, CYP, EST, FIN, FRA, DEU, GRC, IRL, ITA, LVA, LTU, LUX, MLT, NLD, PRT, SVK, SVN, ESP]
+      - name: "European Union"
+        description: "The 27 EU member states"
+        members: [AUT, BEL, BGR, HRV, CYP, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, IRL, ITA, LVA, LTU, LUX, MLT, NLD, POL, PRT, ROU, SVK, SVN, ESP, SWE]
+      - name: "G7"
+        description: "Group of Seven"
+        members: [CAN, FRA, DEU, ITA, JPN, GBR, USA]
+      - name: "G20"
+        description: "The 19 G20 member countries (the EU and African Union members are not listed)"
+        members: [ARG, AUS, BRA, CAN, CHN, FRA, DEU, IND, IDN, ITA, JPN, KOR, MEX, RUS, SAU, ZAF, TUR, GBR, USA]
+      - name: "OECD"
+        description: "The 38 OECD member countries"
+        members: [AUS, AUT, BEL, CAN, CHL, COL, CRI, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, ISL, IRL, ISR, ITA, JPN, KOR, LVA, LTU, LUX, MEX, NLD, NZL, NOR, POL, PRT, SVK, SVN, ESP, SWE, CHE, TUR, GBR, USA]
+      - name: "Mercosur"
+        description: "Southern Common Market full members (Bolivia since 2024; Venezuela is suspended and not listed)"
+        members: [ARG, BRA, PRY, URY, BOL]
+      - name: "BRICS"
+        description: "BRICS members (Indonesia since 2025; Saudi Arabia hasn't confirmed and is not listed)"
+        members: [BRA, RUS, IND, CHN, ZAF, EGY, ETH, IRN, ARE, IDN]
+      - name: "ASEAN"
+        description: "Association of Southeast Asian Nations (Timor-Leste since 2025)"
+        members: [BRN, KHM, IDN, LAO, MYS, MMR, PHL, SGP, THA, VNM, TLS]
+      - name: "USMCA"
+        description: "United States-Mexico-Canada Agreement (formerly NAFTA)"
+        members: [USA, MEX, CAN]
+      - name: "Pacific Alliance"
+        description: "Pacific Alliance members"
+        members: [CHL, COL, MEX, PER]
+      - name: "Andean Community"
+        description: "Andean Community (CAN) members"
+        members: [BOL, COL, ECU, PER]
+      - name: "GCC"
+        description: "Gulf Cooperation Council"
+        members: [BHR, KWT, OMN, QAT, SAU, ARE]
+      - name: "OPEC"
+        description: "OPEC members (Angola left in 2024)"
+        members: [DZA, COG, GNQ, GAB, IRN, IRQ, KWT, LBY, NGA, SAU, ARE, VEN]
+      - name: "EFTA"
+        description: "European Free Trade Association"
+        members: [ISL, LIE, NOR, CHE]
+      - name: "Nordic countries"
+        description: "Denmark, Finland, Iceland, Norway and Sweden"
+        members: [DNK, FIN, ISL, NOR, SWE]
     # The download takes about 30 seconds, so it is saved here and reused until it is older than
     # cache_days (an older copy is still used if a new download fails)
     cache_file: "cache/wdi.rds"
@@ -165,20 +219,22 @@ default:
     # (app/logic/agent.R), the measures (app/measures/) and the context notes (app/context/).
     # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
     # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
-    # {indicators} is replaced with the indicator names above.
+    # {indicators} and {groups} are replaced with the indicator and group names above.
     instructions: |
       Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
       Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
       "GDP" means gdp_usd (current US$) unless the user asks for growth, per capita or PPP.
       These are all the trusted measures, so call them directly with call_measure; use search_pool only for questions none of them answers:
-      - latest_values(indicator, economies): the latest value for countries or regions ("What is Brazil's GDP?").
-      - indicator_series(indicator, economies, start_year?, end_year?): values over time.
-      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?): top or bottom countries.
-      - compound_growth(indicator, economies, start_year, end_year): average annual growth of an amount between two years.
+      - latest_values(indicator, economies?, group?): the latest value for countries or regions ("What is Brazil's GDP?").
+      - indicator_series(indicator, economies?, start_year?, end_year?, group?): values over time.
+      - indicator_ranking(indicator, year?, top_n?, lowest_first?, region?, group?): top or bottom countries.
+      - compound_growth(indicator, economies?, start_year, end_year, group?): total and average annual growth of an amount between two years, highest first ("Which eurozone countries grew most since 2020?": gdp_constant_usd, group "Euro area", start_year 2020).
       - country_profile(economy, year?): one country's latest value of every indicator and its rank among countries ("Brazil's worst indicator", "overview of India").
-      - indicator_chart(indicator, economies, start_year?, end_year?): shows the user an interactive line chart over time ("Plot inflation in Brazil over the years").
+      - indicator_chart(indicator, economies?, start_year?, end_year?, group?): shows the user an interactive line chart over time ("Plot inflation in Brazil over the years").
       For any chart, plot or graph request call indicator_chart, then comment on it in a sentence or two. Never draw plots in run_r: you cannot read images.
       `indicator` is one of {indicators}. `economies` is one string of World Bank names or ISO3 codes separated by semicolons, e.g. "Brazil; Chile".
+      `group` selects the member countries of one of: {groups}. Use it whenever the user names one of these groups ("euro countries", "eurozone", "EU", "Mercosur"); a World Bank region is a different, wider set. In `economies`, "Euro area" or "European Union" is the group's total, not its countries.
+      Real growth over several years: compound_growth with gdp_constant_usd, never by adding or compounding gdp_growth_pct yourself.
       In run_r, pipe with |> (never %>%) and load a package before using its functions, e.g. library(dplyr).
       State the year of every figure.
       Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.

@@ -4,6 +4,7 @@ fake_wdi_raw <- function() {
   indicators <- c(
     "gdp_usd",
     "gdp_growth_pct",
+    "gdp_constant_usd",
     "gdp_per_capita_usd",
     "gdp_per_capita_ppp",
     "inflation_pct",

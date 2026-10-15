@@ -34,6 +34,16 @@ test_that("load_wdi() downloads once, then reuses the file until it is too old",
   expect_equal(calls, 2)
 })
 
+test_that("load_wdi() downloads again when the cache lacks an indicator added to config.yml", {
+  path <- local_tempfile(fileext = ".rds")
+  old <- split_panel(fake_wdi_raw())
+  old$countries$gdp_constant_usd <- NULL
+  saveRDS(old, path)
+
+  fresh <- load_wdi(fetch = function() split_panel(fake_wdi_raw()), path = path, max_age_days = 7)
+  expect_true("gdp_constant_usd" %in% names(fresh$countries))
+})
+
 test_that("load_wdi() falls back to a stale file when the download fails, and errors without one", {
   path <- local_tempfile(fileext = ".rds")
   failing <- function() stop("World Bank API down")
