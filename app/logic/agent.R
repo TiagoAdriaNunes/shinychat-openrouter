@@ -9,7 +9,7 @@ box::use(
   purrr[discard, list_rbind, map, map_chr, some],
   rlang[list2],
   S7[`S7_data<-`, S7_inherits],
-  stringr[fixed, str_c, str_flatten_comma, str_starts, str_to_lower, str_trim],
+  stringr[fixed, str_c, str_detect, str_flatten_comma, str_starts, str_to_lower, str_trim],
   withr[with_options],
   yaml[write_yaml],
 )
@@ -169,9 +169,11 @@ check_measure_calls <- function(agent) {
   agent
 }
 
-# Values models send for an argument they mean to leave out: they count as not sent
+# Values models send for an argument they mean to leave out: they count as not sent. Any text without
+# a letter or digit ("", "{}", "[]", ".", "-", ...; a model sent group "." twice) or a word for nothing.
 is_placeholder <- function(value) {
-  test_string(value) && str_to_lower(str_trim(value)) %in% c("", "{}", "[]", "null", "none", "na", "n/a")
+  test_string(value) &&
+    (!str_detect(value, "[[:alnum:]]") || str_to_lower(str_trim(value)) %in% c("null", "none", "na", "n/a", "nil"))
 }
 
 # Tool function that runs `measure` through commons' `call_measure` with the fields the model sent,
