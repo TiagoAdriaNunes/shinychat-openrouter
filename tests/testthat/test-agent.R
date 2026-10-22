@@ -342,11 +342,13 @@ test_that("require_lookup() requires a tool call only for a new question without
   local_mocked_responses(function(req) {
     sent[[length(sent) + 1]] <<- req$body$data
     message <- c(list(role = "assistant"), replies[[length(sent)]])
-    response_json(body = list(
-      model = "a/alpha:free",
-      choices = list(list(index = 0, message = message, finish_reason = "stop")),
-      usage = list(prompt_tokens = 1, completion_tokens = 1, total_tokens = 2)
-    ))
+    response_json(
+      body = list(
+        model = "a/alpha:free",
+        choices = list(list(index = 0, message = message, finish_reason = "stop")),
+        usage = list(prompt_tokens = 1, completion_tokens = 1, total_tokens = 2)
+      )
+    )
   })
   client <- chat_openrouter(model = "a/alpha:free", echo = "none")
   client$register_tool(tool(function() "42", "Look the figure up", name = "lookup"))
@@ -399,7 +401,17 @@ test_that("each measure is a tool of its own that runs through commons", {
   agent <- new_agent("google/gemma:free", "Gemma (free)", wdi_source(panel))
   tools <- agent$get_tools()
 
-  expect_true(all(c("latest_values", "indicator_series", "indicator_ranking", "compound_growth", "country_profile", "indicator_chart") %in% names(tools)))
+  expect_true(all(
+    c(
+      "latest_values",
+      "indicator_series",
+      "indicator_ranking",
+      "compound_growth",
+      "country_profile",
+      "indicator_chart"
+    ) %in%
+      names(tools)
+  ))
   # The model sees the measure's own arguments, not the `wdi` connection commons fills in
   expect_equal(names(tools$latest_values@arguments@properties), c("indicator", "economies", "group"))
 
@@ -433,8 +445,8 @@ test_that("measure tools mark optional arguments and treat placeholders as left 
   expect_match(arguments$economies@description, world_bank$optional_argument, fixed = TRUE)
   expect_false(grepl(world_bank$optional_argument, arguments$start_year@description, fixed = TRUE))
 
-  # Seen from a model that thought group was required
-  for (group in c("{}", "", "null", "None")) {
+  # Seen from models that thought group was required
+  for (group in c("{}", "", "null", "None", ".", " - ")) {
     result <- growth(indicator = "gdp_usd", economies = "World", start_year = 2020L, end_year = 2022L, group = group)
     expect_null(result@error)
   }

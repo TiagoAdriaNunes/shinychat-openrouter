@@ -14,6 +14,7 @@ box::use(
 
 box::use(
   .. / logic / agent[new_agent, wdi_source],
+  .. / logic / catalog[world_bank_greeting],
   .. / logic / config[
     app_title, chat_mode_label, disclaimer, effort_default_label, effort_label, fallback_model, fallback_model_label,
     greeting, models_page_url, placeholder, show_response_stats, source_url, system_prompt, world_bank,
@@ -362,9 +363,9 @@ server <- function(
     }
     updateSelectInput(session, model_input_id(id), choices = choices, selected = model)
     show_efforts(model)
-    # Each mode's greeting (World Bank data mode's has clickable example questions)
+    # Each mode's greeting (World Bank data mode's is a catalog of clickable example questions)
     chat$clear()
-    chat$set_greeting(if (on) world_bank$greeting else greeting)
+    chat$set_greeting(if (on) world_bank_greeting else greeting)
     stats(NULL)
     log_info("Switched to {if (on) 'World Bank data' else 'chat'} mode with model {model}")
   }

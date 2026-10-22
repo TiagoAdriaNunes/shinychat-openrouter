@@ -85,17 +85,34 @@ default:
   # (https://vincentarelbundock.github.io/WDI/). Only free models that support tool calling are listed.
   world_bank:
     label: "World Bank data"
-    # Replaces the greeting when the World Bank data tab is picked (switching mode starts a new chat).
-    # Each <span class="suggestion"> is a shinychat suggestion: clicking it fills the message box.
+    # Replaces the greeting when the World Bank data tab is picked (switching mode starts a new chat),
+    # followed by the catalog below
     greeting: |
-      **World Bank data mode.** Answers come from the World Bank's World Development Indicators: GDP, growth, inflation, unemployment, population, trade, debt and inequality for any country or region since 1990.
-
-      Try:
-      <span class="suggestion">What is Brazil's GDP?</span>
-      <span class="suggestion">Which countries have the highest inflation?</span>
-      <span class="suggestion">How has India's population changed since 2000?</span>
-      <span class="suggestion">How fast did China's GDP grow per year from 2000 to 2020?</span>
-      <span class="suggestion">Plot inflation in Brazil and Mexico since 2000</span>
+      **World Bank data mode.** Answers come from the World Bank's World Development Indicators: GDP, growth, inflation, unemployment, population, trade, debt and inequality for any country or region since 1990. Click a question to try it, or ask your own.
+    # Shown under the greeting (catalog_markdown() in app/logic/catalog.R): the kinds of questions,
+    # then collapsible lists of the indicators (each with its `example` below) and the country groups.
+    # Every example is a shinychat suggestion: clicking it fills the message box.
+    catalog:
+      questions_heading: "What you can ask"
+      questions:
+        - label: "Latest value"
+          example: "What is Brazil's GDP?"
+        - label: "Changes over time"
+          example: "How has India's population changed since 2000?"
+        - label: "Rankings"
+          example: "Which countries have the highest inflation?"
+        - label: "Growth between two years"
+          example: "How fast did China's GDP grow per year from 2000 to 2020?"
+        - label: "Country overview"
+          example: "Give me an overview of Mexico's economy"
+        - label: "Charts"
+          example: "Plot inflation in Brazil and Mexico since 2000"
+      indicators_heading: "Indicators"
+      indicator_column: "Indicator"
+      example_column: "Try"
+      groups_heading: "Country groups"
+      groups_text: "Ask about a group's member countries, e.g."
+      group_example: "Which Mercosur countries grew most since 2020?"
     unavailable: "World Bank data isn't available right now. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
@@ -123,48 +140,62 @@ default:
     no_lookup: "**{model} didn't look anything up in the World Bank data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
     # Indicators downloaded for every country and aggregate. `name` is the column name in the
     # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()).
+    # `description` is shown to the agent and in the catalog; `example` is the catalog's question for it.
     indicators:
       - name: gdp_usd
         code: NY.GDP.MKTP.CD
         description: "GDP (current US$)"
+        example: "What is Brazil's GDP?"
       - name: gdp_growth_pct
         code: NY.GDP.MKTP.KD.ZG
         description: "GDP growth (annual %), constant prices"
+        example: "How fast did India's economy grow in the latest year?"
       # Real GDP level: total growth between two years is its change (compound_growth), not a sum of
       # the yearly gdp_growth_pct rates
       - name: gdp_constant_usd
         code: NY.GDP.MKTP.KD
         description: "GDP (constant 2015 US$), real GDP without inflation"
+        example: "How much did Chile's real GDP grow from 2000 to 2020?"
       - name: gdp_per_capita_usd
         code: NY.GDP.PCAP.CD
         description: "GDP per capita (current US$)"
+        example: "Which countries have the highest GDP per capita?"
       - name: gdp_per_capita_ppp
         code: NY.GDP.PCAP.PP.KD
         description: "GDP per capita, PPP (constant 2021 international $)"
+        example: "Compare GDP per capita PPP in Brazil, Mexico and Argentina"
       - name: inflation_pct
         code: FP.CPI.TOTL.ZG
         description: "Inflation, consumer prices (annual %)"
+        example: "Which countries have the highest inflation?"
       - name: unemployment_pct
         code: SL.UEM.TOTL.ZS
         description: "Unemployment, total (% of total labor force), modeled ILO estimate"
+        example: "What is the unemployment rate in Spain?"
       - name: population
         code: SP.POP.TOTL
         description: "Population, total"
+        example: "How has Nigeria's population changed since 2000?"
       - name: trade_pct_gdp
         code: NE.TRD.GNFS.ZS
         description: "Trade: exports plus imports of goods and services (% of GDP)"
+        example: "Which countries trade the most as a share of GDP?"
       - name: exports_pct_gdp
         code: NE.EXP.GNFS.ZS
         description: "Exports of goods and services (% of GDP)"
+        example: "Plot exports as a share of GDP in China since 2000"
       - name: fdi_inflows_pct_gdp
         code: BX.KLT.DINV.WD.GD.ZS
         description: "Foreign direct investment, net inflows (% of GDP)"
+        example: "Which G20 countries get the most foreign investment as a share of GDP?"
       - name: gov_debt_pct_gdp
         code: GC.DOD.TOTL.GD.ZS
         description: "Central government debt, total (% of GDP); reported by few countries"
+        example: "Which countries have the highest government debt?"
       - name: gini
         code: SI.POV.GINI
         description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
+        example: "What is Brazil's Gini index?"
     start_year: 1990
     # Country groups the measures can filter by (`group` argument), as the agent's `groups` table.
     # The World Bank data has these groups' totals (aggregates) but not their members. Current
