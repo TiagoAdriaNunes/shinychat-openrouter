@@ -4,7 +4,7 @@ box::use(
   logger[log_error, log_info, log_warn],
   purrr[set_names],
   shiny[
-    getDefaultReactiveDomain, HTML, icon, invalidateLater, observe, observeEvent, reactive, reactiveVal,
+    getDefaultReactiveDomain, HTML, icon, invalidateLater, isolate, observe, observeEvent, reactive, reactiveVal,
     removeNotification, renderText, req, showNotification, tagList, tags, textOutput,
     updateRadioButtons, updateSelectInput,
   ],
@@ -158,8 +158,10 @@ server <- function(
   # Reasoning effort picked for the current model; NULL is the mode's effort: the model's default
   # (none sent) in plain chat, world_bank$reasoning_effort for the agent (see new_agent())
   effort <- NULL
+  # isolate(): also called at startup, outside any reactive context (testServer() hides this, it runs
+  # the server function isolated)
   mode_effort <- function() {
-    if (agent_mode() && test_string(world_bank$reasoning_effort, min.chars = 1)) world_bank$reasoning_effort
+    if (isolate(agent_mode()) && test_string(world_bank$reasoning_effort, min.chars = 1)) world_bank$reasoning_effort
   }
   # The level the dropdown shows for the mode's effort: what OpenRouter uses for this model
   default_effort <- function(model) {
