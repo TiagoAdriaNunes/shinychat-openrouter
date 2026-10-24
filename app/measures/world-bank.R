@@ -19,6 +19,7 @@ box::use(
   ],
   duckplyr[methods_overwrite],
   glue[glue],
+  rlang[abort],
   stringr[fixed, str_flatten_comma, str_split_1, str_subset, str_to_lower, str_trim],
 )
 
@@ -36,7 +37,7 @@ wdi_amount_indicators <- c("gdp_constant_usd", "gdp_usd", "gdp_per_capita_usd", 
 wdi_check_indicator <- function(wdi, indicator) {
   indicators <- setdiff(dbListFields(wdi, "countries"), wdi_id_columns)
   if (!test_choice(indicator, indicators)) {
-    stop(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call. = FALSE)
+    abort(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call = NULL)
   }
 }
 
@@ -52,12 +53,12 @@ wdi_group_members <- function(wdi, group) {
     filter(str_to_lower(group) == wanted_group) |>
     pull(iso3c)
   if (!test_character(members, min.len = 1)) {
-    stop(
+    abort(
       glue(
         "Unknown group '{group}'. Use one of: {str_flatten_comma(unique(groups$group))}. ",
         "group is optional: send null when the question isn't about one of these groups."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   members
@@ -71,7 +72,7 @@ wdi_economy_values <- function(wdi, indicator, economies, group = NULL) {
   named <- if (test_null(economies)) character() else str_subset(str_trim(str_split_1(economies, fixed(";"))), ".")
   wanted <- c(named, wdi_group_members(wdi, group))
   if (!test_character(wanted, min.len = 1)) {
-    stop("Give economies, a group, or both.", call. = FALSE)
+    abort("Give economies, a group, or both.", call = NULL)
   }
   rows <- bind_rows(
     dbReadTable(wdi, "countries") |> select(economy = country, iso3c, year, value = all_of(indicator)),
@@ -80,12 +81,12 @@ wdi_economy_values <- function(wdi, indicator, economies, group = NULL) {
   known <- str_to_lower(c(rows$economy, rows$iso3c))
   if (!test_subset(str_to_lower(wanted), known)) {
     unknown <- wanted[!str_to_lower(wanted) %in% known]
-    stop(
+    abort(
       glue(
         "No World Bank economy named {str_flatten_comma(unknown)}. Use World Bank names ",
         "(e.g. 'Korea, Rep.', 'Egypt, Arab Rep.', 'Turkiye') or ISO3 codes (e.g. 'KOR')."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   rows <- rows |>
@@ -96,7 +97,7 @@ wdi_economy_values <- function(wdi, indicator, economies, group = NULL) {
     arrange(economy, year) |>
     rename_with(\(name) indicator, value)
   if (!test_data_frame(rows, min.rows = 1)) {
-    stop(glue("No {indicator} data for {str_flatten_comma(wanted)}."), call. = FALSE)
+    abort(glue("No {indicator} data for {str_flatten_comma(wanted)}."), call = NULL)
   }
   rows
 }
@@ -200,31 +201,29 @@ indicator_ranking <- function(
     values <- values |>
       filter(iso3c %in% members)
   }
-  # (the arguments have the same names as columns)
-  wanted_region <- region
-  wanted_year <- year
-  if (!test_null(wanted_region)) {
+  # The arguments region and year have the names of columns: .env and .data tell them apart
+  if (!test_null(region)) {
     regions <- sort(unique(values$region))
-    if (!test_choice(wanted_region, regions)) {
-      stop(glue("Unknown region '{wanted_region}'. Use one of: {str_flatten_comma(regions)}."), call. = FALSE)
+    if (!test_choice(region, regions)) {
+      abort(glue("Unknown region '{region}'. Use one of: {str_flatten_comma(regions)}."), call = NULL)
     }
     values <- values |>
-      filter(region == wanted_region)
+      filter(.data$region == .env$region)
   }
   if (!test_data_frame(values, min.rows = 1)) {
-    stop(glue("No data for {indicator}."), call. = FALSE)
+    abort(glue("No data for {indicator}."), call = NULL)
   }
-  if (test_null(wanted_year)) {
-    wanted_year <- values |>
+  if (test_null(year)) {
+    year <- values |>
       count(year) |>
       filter(n >= max(n) / 2) |>
       pull(year) |>
       max()
   }
   values <- values |>
-    filter(year == wanted_year)
+    filter(.data$year == .env$year)
   if (!test_data_frame(values, min.rows = 1)) {
-    stop(glue("No countries report {indicator} for {wanted_year}."), call. = FALSE)
+    abort(glue("No countries report {indicator} for {year}."), call = NULL)
   }
   values |>
     arrange(if (lowest_first) value else desc(value)) |>
@@ -259,15 +258,15 @@ indicator_ranking <- function(
 #' @measure
 compound_growth <- function(wdi, indicator, economies = NULL, start_year, end_year, group = NULL) {
   if (!test_true(end_year > start_year)) {
-    stop("end_year must be after start_year.", call. = FALSE)
+    abort("end_year must be after start_year.", call = NULL)
   }
   if (!test_choice(indicator, wdi_amount_indicators)) {
-    stop(
+    abort(
       glue(
         "compound_growth needs an amount: {str_flatten_comma(wdi_amount_indicators)}. For real GDP ",
         "growth over several years use gdp_constant_usd, not the yearly gdp_growth_pct rates."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   years <- end_year - start_year

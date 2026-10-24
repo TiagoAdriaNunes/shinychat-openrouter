@@ -4,6 +4,7 @@ box::use(
   glue[glue],
   httr2[req_perform, req_retry, req_timeout, req_user_agent, request, resp_body_json],
   purrr[compact, imap, list_rbind],
+  rlang[abort],
 )
 
 box::use(
@@ -26,7 +27,7 @@ fetch_imf <- function(code, last_year = as.integer(format(Sys.Date(), "%Y")) - 1
     resp_body_json()
   series <- body$values[[code]]
   if (!test_list(series, min.len = 1)) {
-    stop(glue("The IMF returned no data for {code}"))
+    abort(glue("The IMF returned no data for {code}."))
   }
   recode <- unlist(world_bank$imf$iso3)
   imap(series, function(years, iso3c) {
