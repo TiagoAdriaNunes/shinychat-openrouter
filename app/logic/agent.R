@@ -2,7 +2,7 @@ box::use(
   checkmate[test_null, test_string],
   commons[commons, context_layer, data_source, semantic_layer],
   coro[async_generator, await_each, yield],
-  ellmer[chat_openrouter, ContentThinking, ContentToolRequest, ContentToolResult],
+  ellmer[AssistantTurn, chat_openrouter, ContentThinking, ContentToolRequest, ContentToolResult],
   glue[glue, glue_data],
   jsonlite[toJSON, validate],
   logger[log_info, log_warn],
@@ -16,7 +16,7 @@ box::use(
 )
 
 box::use(
-  . / client[guard_stream, set_api_arg, wrap_stream],
+  . / client[chunk_text, guard_stream, set_api_arg, set_response_timeout, wrap_stream],
   . / config[fallback_model, world_bank],
 )
 
@@ -254,24 +254,31 @@ require_lookup <- function(agent) {
 #' 2. A reply that ends without a tool call is dropped (the turns are restored) and the question is
 #'    asked again with `world_bank$lookup_nudge` added, held back the same way.
 #' 3. If the retry also skips the data, it is dropped too and `world_bank$no_lookup` (naming `model`)
-#'    is shown instead, so made-up figures never appear as answers in World Bank data mode.
+#'    is shown instead, so made-up figures never appear as answers in Agent mode.
+#' 4. A reply that looked the data up but ended without an answer after the results (some free models
+#'    stop there, or answer only in their thinking) is asked once for it with `world_bank$answer_nudge`;
+#'    if it still writes none, `world_bank$no_answer` is shown, so the chat never just goes quiet.
 #' Once the conversation holds data looked up earlier, replies are passed through as they come: a
 #' repeated or follow-up question can rightly be answered from those results without a new lookup.
-#' A reply the user stops before any lookup shows nothing and isn't retried. A failed request errors
-#' out of the loop (see safe_stream()). `original` is the agent's own stream_async(); `args` its
-#' arguments. Like safe_stream(), the body must end with NULL (coro emits the final value as a chunk).
+#' A reply the user stops shows nothing more and isn't retried. A failed request errors out of the
+#' loop (see safe_stream()). `original` is the agent's own stream_async(); `args` its arguments.
+#' Like safe_stream(), the body must end with NULL (coro emits the final value as a chunk).
 #' @export
 grounded_stream <- async_generator(function(original, agent, args, model) {
   args <- split_args(args)
   before <- agent$get_turns()
   earlier <- has_lookup(before)
+  answered <- FALSE
+  cancelled <- FALSE
   if (earlier) {
     for (chunk in await_each(exec(original, !!!args$inputs, !!!args$options))) {
       if (is_tool_request(chunk)) {
         log_info("World Bank agent ({model}) called {chunk@name}")
       }
+      answered <- answer_after(answered, chunk, looked_up = TRUE)
       yield(chunk)
     }
+    cancelled <- isTRUE(args$options$controller$cancelled)
   }
   # (coro generators can't assign the result of an `if` expression)
   attempts <- list(args$inputs, c(args$inputs, list(world_bank$lookup_nudge)))
@@ -279,11 +286,11 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
     attempts <- list()
   }
   looked_up <- earlier
-  cancelled <- FALSE
   for (inputs in attempts) {
     if (!looked_up && !cancelled) {
       agent$set_turns(before)
       held <- list()
+      answered <- FALSE
       for (chunk in await_each(exec(original, !!!inputs, !!!args$options))) {
         if (is_tool_request(chunk)) {
           log_info("World Bank agent ({model}) called {chunk@name}")
@@ -294,6 +301,7 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
             yield(text)
           }
         }
+        answered <- answer_after(answered, chunk, looked_up)
         if (looked_up || is_thinking(chunk)) {
           yield(chunk)
         } else {
@@ -310,8 +318,49 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
     agent$set_turns(before)
     yield(as.character(glue_data(list(model = model), world_bank$no_lookup, .envir = baseenv())))
   }
+  if (looked_up && !answered && !cancelled) {
+    log_warn("World Bank agent ({model}) wrote no answer after its lookup; asking for it")
+    drop_empty_reply(agent)
+    for (chunk in await_each(exec(original, world_bank$answer_nudge, !!!args$options))) {
+      answered <- answer_after(answered, chunk, looked_up = TRUE)
+      yield(chunk)
+    }
+    cancelled <- isTRUE(args$options$controller$cancelled)
+    if (!answered && !cancelled) {
+      log_warn("World Bank agent ({model}) still wrote no answer")
+      yield(as.character(glue_data(list(model = model), world_bank$no_answer, .envir = baseenv())))
+    }
+  }
   NULL
 })
+
+#' Whether a reply has an answer: `answered` so far, updated with the next streamed `chunk`, once the
+#' data has been looked up (`looked_up`). Text that isn't blank counts, and so does a chart; text
+#' before the first lookup (a preamble) doesn't. Later tool calls don't undo an answer already shown:
+#' asking again then made a model that re-checks its results repeat the answer.
+#' @export
+answer_after <- function(answered, chunk, looked_up) {
+  text <- chunk_text(chunk)
+  answered || (looked_up && (inherits(chunk, "shiny.tag") || (!test_null(text) && str_detect(text, "\\S"))))
+}
+
+#' Remove the agent's last turn when it is a reply without text or tool calls (e.g. only thinking), so
+#' the request asking for the answer doesn't send an empty reply, which some providers reject.
+#' @export
+drop_empty_reply <- function(agent) {
+  turns <- agent$get_turns()
+  if (length(turns) == 0) {
+    return(invisible(agent))
+  }
+  last <- turns[[length(turns)]]
+  has_content <- some(last@contents, function(content) {
+    is_tool_request(content) || answer_after(FALSE, content, looked_up = TRUE)
+  })
+  if (S7_inherits(last, AssistantTurn) && !has_content) {
+    agent$set_turns(turns[-length(turns)])
+  }
+  invisible(agent)
+}
 
 #' Pass an agent's `stream` through, adding the chart of each chart measure (the `chart` its tool
 #' result carries, see app/measures/charts.R) to the reply itself, right after the tool's card:
@@ -369,6 +418,7 @@ new_agent <- function(model, label, source) {
       network = "none"
     )
   })
+  set_response_timeout(agent, world_bank$response_timeout_seconds)
   describe_tools(agent)
   measure_tools(agent, layer)
   check_measure_calls(agent)

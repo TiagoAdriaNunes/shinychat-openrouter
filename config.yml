@@ -31,6 +31,10 @@ default:
     effort_default_label: "Default"
 
   chat:
+    # Time limit of each plain chat request (ellmer's `ellmer_timeout_s`), after which the reply ends
+    # with errors.failed. It covers the whole streamed answer, so it stays at ellmer's 5 minutes: long
+    # answers from slow free models take minutes. Set here because Agent mode sets its own.
+    response_timeout_seconds: 300
     # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
     # footnotes, blockquotes, highlighted code blocks with a copy button). It does not render
     # LaTeX math, Mermaid diagrams or raw HTML, so the prompt steers models away from those.
@@ -158,6 +162,15 @@ default:
     # Shown instead of the reply when the model answered twice without looking anything up (its
     # figures would be made up). {model} is replaced with the model's name.
     no_lookup: "**{model} didn't look anything up in the data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
+    # Sent when the model looked the data up but its reply ended without an answer after the results
+    # (some free models stop there, or answer only in their thinking): asked once (grounded_stream())
+    answer_nudge: "(You looked the data up above but didn't write an answer: answer my question from those results now, in a sentence or two.)"
+    # Shown when the reply is still empty after answer_nudge. {model} is the model's name.
+    no_answer: "**{model} looked the data up but didn't write an answer**, so the figures are only in the card above. Please ask again or select a different model from the dropdown below."
+    # Time limit of each model request in this mode (ellmer's `ellmer_timeout_s`; 5 minutes by
+    # default), after which the reply ends with errors.failed instead of a spinner that runs on when a
+    # free provider stops responding. Answers here are short, so 90 seconds leaves a wide margin.
+    response_timeout_seconds: 90
     # Indicators downloaded for every country and aggregate. `name` is the column name in the
     # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()), or
     # the IMF indicator with `source: imf` (see `sources`). Changing a code downloads the data again.
@@ -402,6 +415,7 @@ default:
       In run_r, pipe with |> (never %>%) and load a package before using its functions, e.g. library(dplyr).
       State the year of every figure.
       Be brief. Lead with the answer; keep simple answers to 1-3 sentences, without headings or bold. Omit preambles, progress narration and recaps.
+      Once you have answered, stop: don't run more tools to re-check the figures or write the answer again.
 
   # Shown in the chat instead of the raw error when a model request fails.
   # {model} is replaced with the model's name.
