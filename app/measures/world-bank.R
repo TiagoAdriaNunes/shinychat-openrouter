@@ -1,26 +1,25 @@
-# Trusted calculations (commons measures) over the World Bank tables, loaded with
-# commons::semantic_layer() as in https://posit-dev.github.io/commons/r/articles/commons.html.
-#
-# commons reads the roxygen blocks: `@measure` marks a measure, each `@param` with a type code span is
-# an argument the model supplies, and `wdi` (no @param) is the connection to the data source of that
-# name, filled in by commons. commons also copies these functions' source into the agent's sandboxed R
-# session, so they must be self-contained: base R and packages imported with box::use(), no app
-# modules or objects from the app.
-#
-# `economies` is one semicolon-separated string because commons 0.1.1 only accepts arrays of enums as
-# measure arguments, and World Bank names contain commas ("Korea, Rep.").
+# Trusted calculations (commons measures) over the World Bank and IMF tables, and the chart measure.
+# commons reads the roxygen blocks: `@measure` marks a measure, each `@param` with a type is an
+# argument the model supplies, and `wdi` (no @param) is the data source's connection. It copies the
+# measures and helpers of this file into the agent's sandboxed R session, so they use only the
+# packages imported here, never app modules. `economies` is one semicolon-separated string: commons
+# 0.1.1 only accepts arrays of enums, and World Bank names contain commas ("Korea, Rep.").
 
 box::use(
   checkmate[test_character, test_choice, test_data_frame, test_null, test_subset, test_true],
   DBI[dbListFields, dbReadTable],
   dplyr[
-    all_of, arrange, bind_rows, count, desc, filter, first, if_else, mutate, pull, rename_with,
-    row_number, select, slice_head, slice_max, summarise,
+    all_of, arrange, bind_rows, count, desc, filter, first, group_by, if_else, mutate, pull, rename,
+    rename_with, row_number, select, slice_head, slice_max, summarise,
   ],
   duckplyr[methods_overwrite],
+  echarts4r[e_axis_labels, e_charts, e_grid, e_legend, e_line, e_text_style, e_toolbox_feature, e_tooltip, e_y_axis],
+  ellmer[ContentToolResult],
   glue[glue],
+  htmltools[as.tags, div],
+  htmlwidgets[JS],
   rlang[abort],
-  stringr[fixed, str_flatten_comma, str_split_1, str_subset, str_to_lower, str_trim],
+  stringr[fixed, str_detect, str_flatten, str_flatten_comma, str_split_1, str_subset, str_to_lower, str_trim],
 )
 
 # Run the dplyr verbs on duckdb (duckplyr falls back to dplyr for what it can't translate),
@@ -287,4 +286,108 @@ compound_growth <- function(wdi, indicator, economies = NULL, start_year, end_ye
     ) |>
     arrange(desc(total_growth_pct)) |>
     select(economy, iso3c, start_year, start_value, end_year, end_value, total_growth_pct, annual_growth_pct)
+}
+
+# Chart text and grid colours readable on both the light and the dark theme
+chart_text_colour <- "#8a8a8a"
+chart_grid_colour <- "rgba(128, 128, 128, 0.25)"
+
+# Divisor and axis note that keep large amounts (GDP in US$, population) readable on the axis
+chart_unit <- function(values) {
+  largest <- max(abs(values))
+  if (largest >= 1e12) {
+    list(divisor = 1e12, note = " (trillions)")
+  } else if (largest >= 1e9) {
+    list(divisor = 1e9, note = " (billions)")
+  } else if (largest >= 1e6) {
+    list(divisor = 1e6, note = " (millions)")
+  } else {
+    list(divisor = 1, note = "")
+  }
+}
+
+chart_number <- function(x) format(signif(x, 4), big.mark = ",", scientific = FALSE, trim = TRUE)
+
+# How the chart writes values (JavaScript, run by echarts in the browser): percentages with two
+# decimals and a % sign ("5.02%"), amounts with thousands separators and at most two decimals
+chart_formats <- function(percent) {
+  if (percent) {
+    list(tooltip = JS("(value) => Number(value).toFixed(2) + '%'"), axis = "{value}%")
+  } else {
+    list(
+      tooltip = JS("(value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })"),
+      axis = "{value}"
+    )
+  }
+}
+
+#' Line chart of an indicator over the years
+#'
+#' Use whenever the user asks for a chart, plot, graph, line chart, figure or visualization, or to
+#' draw, show or visualize a trend over time, e.g. "Plot inflation in Brazil over the years", "Chart
+#' GDP of India and China since 2000", "Graph unemployment in Spain", "Plot GDP growth for the G7
+#' countries". Shows the user an interactive line chart with one line per country or region, or per
+#' member of a group (euro area / eurozone, EU, Mercosur, BRICS, G7...), for any indicator: GDP, GDP growth,
+#' GDP per capita, PPP, share of world GDP, inflation, unemployment, population, trade, exports, FDI,
+#' current account, government debt, net debt, budget deficit, interest, private, household and
+#' corporate debt, and the Gini index (inequality).
+#'
+#' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, inflation_pct, population
+#'   (same columns as latest_values).
+#' @param economies `string` Countries or aggregates separated by semicolons, as World Bank names or
+#'   ISO3 codes, e.g. 'Brazil; Chile' or 'BRA; CHL; WLD'.
+#' @param start_year `integer` First year to include.
+#' @param end_year `integer` Last year to include.
+#' @param group `string` Also plot every member country of a group in the `groups` table, e.g.
+#'   'Euro area', 'European Union', 'Mercosur', 'G7'.
+#' @return The chart is shown to the user. You get a text summary per economy: years covered, first
+#'   and last value, minimum and maximum with their years.
+#' @measure
+indicator_chart <- function(wdi, indicator, economies = NULL, start_year = NULL, end_year = NULL, group = NULL) {
+  first_year <- if (test_null(start_year)) -Inf else start_year
+  last_year <- if (test_null(end_year)) Inf else end_year
+  rows <- wdi_economy_values(wdi, indicator, economies, group) |>
+    rename(value = all_of(indicator)) |>
+    filter(year >= first_year, year <= last_year) |>
+    arrange(year, economy)
+  if (!test_data_frame(rows, min.rows = 1)) {
+    abort(glue("No {indicator} data for {str_flatten_comma(c(economies, group))} in those years."), call = NULL)
+  }
+  unit <- chart_unit(rows$value)
+  # Indicators in percent are named *_pct or *_pct_gdp
+  formats <- chart_formats(str_detect(indicator, "_pct"))
+
+  chart <- rows |>
+    mutate(year = as.character(year), value = value / unit$divisor) |>
+    group_by(economy) |>
+    e_charts(year, height = "320px", width = "100%") |>
+    e_line(value, symbolSize = 5) |>
+    e_axis_labels(y = glue("{indicator}{unit$note}")) |>
+    e_y_axis(
+      scale = TRUE,
+      axisLabel = list(formatter = formats$axis),
+      splitLine = list(lineStyle = list(color = chart_grid_colour))
+    ) |>
+    e_grid(left = 60, right = 40, top = 70, bottom = 30) |>
+    e_legend(top = 0, left = "center", textStyle = list(color = chart_text_colour)) |>
+    e_text_style(color = chart_text_colour) |>
+    e_tooltip(trigger = "axis", valueFormatter = formats$tooltip) |>
+    e_toolbox_feature("saveAsImage")
+
+  summary <- rows |>
+    summarise(
+      text = glue(
+        "{economy[1]}: {min(year)}-{max(year)}, first {chart_number(value[which.min(year)])}, ",
+        "last {chart_number(value[which.max(year)])}, min {chart_number(min(value))} ({year[which.min(value)]}), ",
+        "max {chart_number(max(value))} ({year[which.max(value)]})"
+      ),
+      .by = economy
+    )
+  # The chart goes in the reply (chart_stream() in grounding.R); the model only gets the summary.
+  # No `extra$data`: commons would offer the rows to run_r, and re-analysing them there marks the
+  # answer untrusted. The div keeps the widget's JavaScript, which shinychat drops from a bare widget.
+  ContentToolResult(
+    value = str_flatten(c(glue("Line chart of {indicator} by year, shown to the user."), summary$text), "\n"),
+    extra = list(chart = div(as.tags(chart)))
+  )
 }

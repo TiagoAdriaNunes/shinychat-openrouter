@@ -14,13 +14,14 @@ box::use(
 )
 
 box::use(
-  .. / logic / agent[agent_context, new_agent, wdi_source],
+  .. / logic / agent[agent_context, new_agent],
   .. / logic / catalog[world_bank_greeting],
   .. / logic / config[
     app_title, chat_mode_label, disclaimer, effort_default_label, effort_label, fallback_model, fallback_model_label,
     greeting, models_page_url, placeholder, show_response_stats, source_url, system_prompt, world_bank,
   ],
   .. / logic / client[format_stats, new_client, response_stats, response_turns, set_reasoning_effort],
+  .. / logic / dictionary[wdi_source],
   .. / logic / models[free_models, nearest_effort, reasoning_options],
   .. / logic / theme[chat_theme],
   .. / logic / wdi[wdi_downloading, wdi_panel],
@@ -132,14 +133,10 @@ ui <- function(id) {
   )
 }
 
-# Needs OPENROUTER_API_KEY in the environment (e.g. in ~/.Renviron).
-# `models` is a named character vector of allowed models (label = name, value = id) for plain chat;
-# `agent_models` the same for World Bank data mode (models with tool calling). `world_bank_data`
-# returns the World Bank panel or NULL, and is only called when that mode is first turned on;
-# `data_loading` returns TRUE while that data is still downloading in the background. `efforts` holds
-# the reasoning effort levels and default of each model that has them (see reasoning_options()).
-# Returns a list of reactives: `model` (id of the model in use), `world_bank` (TRUE in World Bank
-# data mode) and `stats` (last response's stats or NULL).
+#' Chat server (needs OPENROUTER_API_KEY). `models` and `agent_models` are the allowed models (label =
+#' name, value = id) for plain chat and Agent mode; `world_bank_data` returns the data panel or NULL,
+#' `data_loading` TRUE while it downloads, and `efforts` each model's effort levels (injected for
+#' tests). Returns reactives: `model` (id in use), `world_bank` (TRUE in Agent mode) and `stats`.
 #' @export
 server <- function(
   id,
@@ -223,6 +220,7 @@ server <- function(
   log_info("Chat client created with model {initial_model}")
   client <- client_for(initial_model, FALSE)
   chat <- chat_server(id, client, history = FALSE)
+  streaming <- function() chat$status() == "streaming"
 
   # sync = FALSE: by default set_client() copies the old client's turns, system prompt AND tools onto
   # the new one, which would replace the agent's commons prompt and tools with the plain chat's (none).
@@ -254,7 +252,7 @@ server <- function(
   pending_effort <- NULL
   started <- NULL
   observeEvent(chat$status(), {
-    if (chat$status() == "streaming") {
+    if (streaming()) {
       # Time each response from shinychat's status ("streaming" -> "idle") and read its tokens
       # from the client that produced it
       model_id <- client$get_model()
@@ -293,7 +291,7 @@ server <- function(
       log_warn("Ignoring unknown model selection")
       req(FALSE)
     }
-    if (chat$status() == "streaming") {
+    if (streaming()) {
       pending_model <<- if (model == current_model()) NULL else model
       req(FALSE)
     }
@@ -307,7 +305,7 @@ server <- function(
     # Also sent back when the dropdown is filled in, and "" while it's greyed out
     req(value %in% efforts[[current_model()]]$efforts)
     applied <- effort %||% default_effort(current_model())
-    if (chat$status() == "streaming") {
+    if (streaming()) {
       pending_effort <<- if (value == applied) NULL else value
       req(FALSE)
     }
@@ -323,7 +321,7 @@ server <- function(
       showNotification(message, type = "warning", session = session)
       req(FALSE)
     }
-    if (chat$status() == "streaming") {
+    if (streaming()) {
       revert(world_bank$busy)
     }
 

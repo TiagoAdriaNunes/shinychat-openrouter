@@ -6,8 +6,9 @@ box::use(
 )
 
 box::use(
-  app / logic / catalog[catalog_markdown, indicator_source, world_bank_greeting],
+  app / logic / catalog[catalog_markdown, world_bank_greeting],
   app / logic / config[world_bank],
+  app / logic / indicators[indicator_source],
 )
 
 suggestion <- function(text) str_c('<span class="suggestion">', text, "</span>")

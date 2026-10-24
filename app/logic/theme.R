@@ -8,11 +8,9 @@ box::use(
   . / config[theme_settings],
 )
 
-# Theme variables come from the `theme` section of config.yml. commons_theme() is shinychat's
-# page_chat_theme() plus the commons chat assets (provenance markers in Agent mode).
-# Top bar icons (GitHub link and dark mode toggle): bslib sets every element inside a toolbar to
-# font-size 0.9rem, so these selectors need to be more specific than `.bslib-toolbar :not(...)`.
-# Both icons get the same centred square so they line up; the toggle is drawn at 1.3em of its font-size.
+# Theme from the `theme` section of config.yml: shinychat's page_chat_theme() plus commons' chat assets
+# (provenance markers). The top bar icons' rules beat bslib's toolbar font-size with more specific
+# selectors and give both icons the same centred square.
 #' @export
 chat_theme <- exec(commons_theme, !!!theme_settings) |>
   bs_add_rules(

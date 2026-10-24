@@ -23,17 +23,15 @@ default:
     source_url: "https://github.com/TiagoAdriaNunes/shinychat-openrouter/"
     # Line under the input with the last response's model, time and token counts
     show_response_stats: true
-    # Reasoning effort dropdown next to the model: the levels the selected model offers (OpenRouter's
-    # `reasoning.supported_efforts`), starting at the model's default each time a model is picked
-    # (Agent mode starts at world_bank.reasoning_effort instead).
-    # Greyed out, showing effort_default_label, for models without effort levels.
+    # Reasoning effort dropdown next to the model: the selected model's levels (OpenRouter's
+    # `reasoning.supported_efforts`), starting at its default (Agent mode: world_bank.reasoning_effort);
+    # greyed out, showing effort_default_label, for models without levels.
     effort_label: "Effort:"
     effort_default_label: "Default"
 
   chat:
-    # Time limit of each plain chat request (ellmer's `ellmer_timeout_s`), after which the reply ends
-    # with errors.failed. It covers the whole streamed answer, so it stays at ellmer's 5 minutes: long
-    # answers from slow free models take minutes. Set here because Agent mode sets its own.
+    # Time limit of each plain chat request (ellmer's `ellmer_timeout_s`), then errors.failed. It covers
+    # the whole streamed answer, which takes minutes on slow free models.
     response_timeout_seconds: 300
     # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
     # footnotes, blockquotes, highlighted code blocks with a copy button). It does not render
@@ -58,9 +56,8 @@ default:
     fallback_model_label: "Free Models Router"
     # Public model catalogue (no API key needed); free models have zero prompt and completion pricing
     models_url: "https://openrouter.ai/api/v1/models"
-    # The models this app's API key can use: the catalogue filtered by the account's provider and
-    # privacy settings (https://openrouter.ai/settings/privacy). Free models whose only providers the
-    # account ignores (e.g. Gemma 4: "All providers have been ignored", HTTP 404) are left out of the
+    # The models this app's API key can use (the catalogue filtered by the account's privacy settings,
+    # https://openrouter.ai/settings/privacy): the others fail with 404 and are left out of the
     # dropdown. Needs the API key; if it can't be fetched, nothing is filtered.
     user_models_url: "https://openrouter.ai/api/v1/models/user"
     models_page_url: "https://openrouter.ai/collections/free-models"
@@ -68,9 +65,8 @@ default:
     models_cache_seconds: 3600
     request_timeout_seconds: 10
     # Only models whose provider answered at least this share (%) of requests in the last 30 minutes
-    # are listed (`uptime_last_30m` from <models_url>/<model id>/endpoints, no API key needed).
-    # Models with no figure (no requests in that time, or the lookup failed) are left out too.
-    # If no model passes, all are listed. Empty to skip the check.
+    # are listed (`uptime_last_30m` from <models_url>/<id>/endpoints); models with no figure are left
+    # out too. If none passes, all are listed. Empty to skip the check.
     min_uptime_30m: 100
     # Listed last, whatever their intelligence score, so the chat doesn't start with them.
     # Uptime doesn't count rate limiting (HTTP 429), so add models that are often rate limited here.
@@ -88,10 +84,9 @@ default:
       # Router: picks any free model at random, including the ones excluded here
       - "openrouter/free"
 
-  # "Agent mode" tab under the message box: a commons agent (https://posit-dev.github.io/commons/r/)
-  # that answers from World Development Indicators downloaded with the WDI package
-  # (https://vincentarelbundock.github.io/WDI/) and IMF indicators (`sources`). Only free models that
-  # support tool calling are listed. (The section keeps its first name, world_bank.)
+  # "Agent mode" tab: a commons agent (https://posit-dev.github.io/commons/r/) answering from World Bank
+  # and IMF indicators (`sources`), on free models that support tool calling. (The section keeps its
+  # first name, world_bank.)
   world_bank:
     label: "Agent mode"
     # Replaces the greeting when the Agent mode tab is picked (switching mode starts a new chat),
@@ -152,12 +147,11 @@ default:
       You sent: {received}
       Call call_measure again with the complete arguments, or call the measure's own tool (e.g.
       latest_values) with its arguments as fields.
-    # Put before the description of each optional measure argument in the measure tools: OpenRouter
-    # schemas list every argument as required (optional ones accept null), and a model once sent
-    # group "{}" because it thought it had to give one.
+    # Put before the description of each optional measure argument: OpenRouter's tool schemas mark
+    # every argument as required (optional ones accept null)
     optional_argument: "Optional: send null to leave it out (the usual case), a value only when the question needs it."
     # Added to the question when the model answered without looking anything up; the reply is
-    # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
+    # dropped and the question asked once more (see grounded_stream() in app/logic/grounding.R)
     lookup_nudge: "(Answer this from the data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
     # Shown instead of the reply when the model answered twice without looking anything up (its
     # figures would be made up). {model} is replaced with the model's name.
@@ -167,14 +161,12 @@ default:
     answer_nudge: "(You looked the data up above but didn't write an answer: answer my question from those results now, in a sentence or two.)"
     # Shown when the reply is still empty after answer_nudge. {model} is the model's name.
     no_answer: "**{model} looked the data up but didn't write an answer**, so the figures are only in the card above. Please ask again or select a different model from the dropdown below."
-    # Time limit of each model request in this mode (ellmer's `ellmer_timeout_s`; 5 minutes by
-    # default), after which the reply ends with errors.failed instead of a spinner that runs on when a
-    # free provider stops responding. Answers here are short, so 90 seconds leaves a wide margin.
+    # Time limit of each model request in this mode, then errors.failed instead of a spinner that runs
+    # on when a free provider stops responding. Answers here are short.
     response_timeout_seconds: 90
-    # Indicators downloaded for every country and aggregate. `name` is the column name in the
-    # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()), or
-    # the IMF indicator with `source: imf` (see `sources`). Changing a code downloads the data again.
-    # `description` is shown to the agent and in the catalog; `example` is the catalog's question for it.
+    # Indicators downloaded for every country and aggregate: `name` is the column in the agent's
+    # tables, `code` the World Bank series (WDI::WDIsearch()) or, with `source: imf`, the IMF indicator.
+    # `description` is shown to the agent and in the catalog, `example` is its catalog question.
     indicators:
       - name: gdp_usd
         code: NY.GDP.MKTP.CD
@@ -222,16 +214,14 @@ default:
         code: BX.KLT.DINV.WD.GD.ZS
         description: "Foreign direct investment, net inflows (% of GDP)"
         example: "Which G20 countries get the most foreign investment as a share of GDP?"
-      # From the IMF (`source: imf`, `code` is an IMF DataMapper indicator, see `imf` below): the World
-      # Bank's central government debt (GC.DOD.TOTL.GD.ZS) had 34 countries for 2024 and none of
-      # France, Japan, Italy or Greece, so a "highest debt" ranking left out the most indebted
+      # From the IMF: the World Bank's central government debt (GC.DOD.TOTL.GD.ZS) covers few countries
       - name: gov_debt_pct_gdp
         code: GGXWDG_NGDP
         source: imf
         description: "General government gross debt (% of GDP), IMF World Economic Outlook"
         example: "Which countries have the highest government debt?"
-      # More IMF indicators the World Bank data here doesn't have. Household and corporate debt use
-      # the "loans and debt securities" series: 86 countries, against 44 for "all instruments".
+      # IMF indicators the World Bank data here lacks. Household and corporate debt: the "loans and
+      # debt securities" series, which covers about twice as many countries as "all instruments".
       - name: gov_net_debt_pct_gdp
         code: GGXWDN_G01_GDP_PT
         source: imf
@@ -277,19 +267,16 @@ default:
         description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
         example: "What is Brazil's Gini index?"
     start_year: 1990
-    # Indicators with `source: imf` come from the IMF DataMapper API ({code} is the indicator) and fill
-    # the countries table only: the IMF's country groups aren't the World Bank's aggregates. Years from
-    # the download year on are dropped (World Economic Outlook and Fiscal Monitor forecasts). Not the
-    # API's `projection-year`: for the Global Debt Database it is the last year with actual data.
+    # Indicators with `source: imf` come from the IMF DataMapper API, for countries only (its groups
+    # aren't the World Bank's aggregates). Years from the download year on (forecasts) are dropped; the
+    # API's `projection-year` can't be used for that, it is the last actual year in some datasets.
     imf:
       # Current API version per https://www.imf.org/external/datamapper/api/help
       url: "https://www.imf.org/external/datamapper/api/v2/{code}"
       # Every indicator's description and source, for the indicator definitions (`definitions`)
       indicators_url: "https://www.imf.org/external/datamapper/api/v2/indicators"
-      # The API documents no rate limit; the app sends one request per IMF indicator per download.
-      # A failed request (timeout, dropped connection, 429 or 503) is tried again up to max_tries in
-      # all, waiting longer each time (or as long as a Retry-After header says). The User-Agent names
-      # the app and its source_url.
+      # No documented rate limit (the app sends one request per indicator per download). Failed
+      # requests are tried up to max_tries times with growing waits; the User-Agent names the app.
       timeout_seconds: 30
       max_tries: 3
       # IMF codes that differ from the World Bank's ISO3 codes
@@ -349,8 +336,8 @@ default:
     # cache_days (an older copy is still used if a new download fails)
     cache_file: "cache/wdi.rds"
     cache_days: 7
-    # commons indexes the data dictionary for its context search (about 5 seconds); the index is
-    # built at startup and kept here, rebuilt only when the dictionary changes
+    # commons' context search index (data dictionary, notes, definitions), built at startup and kept
+    # here; rebuilt only when their text changes
     context_cache: "cache/commons"
     # Trusted calculations (commons semantic layer): R files of roxygen-documented `@measure`
     # functions, or directories of them. Paths are relative to the project root.
@@ -361,12 +348,9 @@ default:
     context_files:
       - "app/context/world-bank.md"
       - "app/context/imf.md"
-    # The official definition and source of every indicator above, made at each download from the
-    # WDI package's series metadata and the IMF's `indicators_url`, as one Markdown file per indicator
-    # added to the context files (app/logic/definitions.R): commons searches them like those, so
-    # questions about what an indicator measures are answered, and can be cited, from the publisher's
-    # text. One file each, so a search result is one whole definition (commons cuts documents into
-    # ~1,600-character pieces, which in a single file mixed neighbouring indicators).
+    # The official definition of every indicator, made at each download (WDI series metadata and the
+    # IMF's `indicators_url`) and added to the context files, one Markdown file per indicator so a
+    # search returns one whole definition (app/logic/definitions.R)
     definitions:
       # Each file's heading: "<heading>: <indicator> (`<column>`)"
       heading: "Indicator definition"
@@ -374,28 +358,15 @@ default:
     # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
     # that are NOT a security boundary: only for local development (see the `development` section).
     allow_unsafe_fallback: false
-    # How much the model thinks before each step (OpenRouter `reasoning.effort`: none, minimal, low,
-    # medium, high, xhigh, max). The agent mostly picks a measure and reads a small table, so a low
-    # effort answers faster and better than the models' own defaults. Sent to every model in this mode
-    # and used again whenever a model is picked (the effort dropdown can change it); models without
-    # that level get the nearest one. Empty to use each model's default.
+    # How much the model thinks before each step (OpenRouter `reasoning.effort`). The agent mostly picks
+    # a measure and reads a small table, so low answers faster and better than the models' defaults;
+    # models without that level get the nearest one. Empty to use each model's default.
     reasoning_effort: "low"
-    # Make the model call a tool on the first request for each new question (OpenRouter
-    # `tool_choice: required`), so it looks the data up instead of answering from memory. Some free
-    # models ignore it; replies that still skip the data are retried and then dropped (lookup_nudge,
-    # no_lookup).
+    # Make the model call a tool on the first request for each new question (OpenRouter `tool_choice:
+    # required`) so it looks the data up; for the free models that ignore it, see lookup_nudge.
     require_lookup: true
-    # Added at the end of commons' own system prompt ("Additional instructions"). Following the commons
-    # onboarding guide, only short guidance every conversation needs: commons already sets the agent's
-    # role and the trusted-calculation workflow, and data knowledge belongs in the data dictionary
-    # (app/logic/agent.R), the measures (app/measures/) and the context notes (app/context/).
-    # The brevity rule is commons' own "concise responses" section, which it only turns on for Claude 5.
-    # The measure list saves a search_pool round trip per answer; keep it in sync with app/measures/.
-    # {indicators} and {groups} are replaced with the indicator and group names above.
-    # Replace commons' descriptions of these tools, which say to run search_pool before any data
-    # question: that contradicts `instructions`, which list the measures to call directly, and a
-    # reasoning model once looped between the two rules without ever calling a tool. Each measure
-    # is also a tool of its own (see measure_tools() in app/logic/agent.R).
+    # Replace commons' descriptions of these tools, which say to search before any data question and so
+    # contradict `instructions`; each measure is also a tool of its own (measure_tools(), app/logic/tools.R)
     tool_descriptions:
       search_pool: >-
         Search the semantic layer's trusted calculations (measures). The measures listed in your
@@ -408,6 +379,10 @@ default:
         Prefer a measure's own arguments when they can answer the question directly. Measure results
         may be displayed directly to the user. If a result says it is already visible, do not
         reproduce it in your reply; summarize or interpret the relevant results instead.
+    # Added at the end of commons' own system prompt. Only short guidance every conversation needs (as
+    # the commons onboarding guide says): data knowledge belongs in the data dictionary, measures and
+    # context notes. The measure list saves a search round trip per answer; keep it in sync with
+    # app/measures/. {indicators} and {groups} are replaced with the configured names.
     instructions: |
       Answer only from the data, never from your own knowledge, even when you think you know the answer. If the data can't answer, say so.
       Users make typos and use loose wording ("GPD" means GDP): work out the indicator they mean and look it up instead of asking.
