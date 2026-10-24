@@ -1,10 +1,10 @@
 box::use(
   cachem[cache_mem],
   checkmate[test_null, test_number, test_string],
-  httr2[req_auth_bearer_token, req_perform, req_timeout, request, resp_body_json],
+  httr2[req_auth_bearer_token, req_perform, req_perform_parallel, req_timeout, request, resp_body_json],
   logger[log_info, log_warn],
   memoise[memoise],
-  purrr[compact, keep, map, map_chr, map_dbl, set_names],
+  purrr[compact, keep, map, map_chr, map_dbl, map2_dbl, set_names],
   stringr[str_c, str_flatten],
 )
 
@@ -72,13 +72,16 @@ keep_usable <- function(models) {
   keep(models, \(m) m$id %in% usable)
 }
 
-# Share (%) of requests the model's best provider answered in the last 30 minutes, or NA when
-# OpenRouter has no figure (no requests in that time) or the lookup fails
-uptime_30m <- function(id) {
+# Share (%) of requests the model's best provider answered in the last 30 minutes, from the model's
+# <models_url>/<id>/endpoints response (`resp`, or the error its request ended with); NA when
+# OpenRouter has no figure (no requests in that time) or the lookup failed
+uptime_from <- function(resp, id) {
   tryCatch(
     {
-      endpoints <- get_json(str_c(models_url, "/", id, "/endpoints"))$data$endpoints
-      uptime <- map_dbl(endpoints, \(e) {
+      if (!inherits(resp, "httr2_response")) {
+        stop(resp)
+      }
+      uptime <- map_dbl(resp_body_json(resp)$data$endpoints, \(e) {
         if (test_number(e$uptime_last_30m)) e$uptime_last_30m else NA_real_
       })
       if (all(is.na(uptime))) NA_real_ else max(uptime, na.rm = TRUE)
@@ -90,13 +93,22 @@ uptime_30m <- function(id) {
   )
 }
 
-# Models that were up for at least `min_uptime_30m` percent of the last 30 minutes. All of them if
-# none passes (e.g. the uptime lookups failed): better a list to try than the fallback router.
-keep_reliable <- function(models) {
-  if (!test_number(min_uptime_30m)) {
+# Uptimes (see uptime_from()) of the models `ids`, named by id: one request per model, sent in
+# parallel (one after another, they took several seconds)
+uptimes_30m <- function(ids) {
+  requests <- map(ids, \(id) req_timeout(request(str_c(models_url, "/", id, "/endpoints")), request_timeout_seconds))
+  responses <- req_perform_parallel(requests, on_error = "continue", progress = FALSE)
+  set_names(map2_dbl(responses, ids, uptime_from), ids)
+}
+
+# Models that were up for at least `min_uptime_30m` percent of the last 30 minutes (`uptime`, from
+# uptimes_30m()). All of them if none passes (e.g. the uptime lookups failed): better a list to try
+# than the fallback router.
+keep_reliable <- function(models, uptime) {
+  if (!test_number(min_uptime_30m) || length(models) == 0) {
     return(models)
   }
-  reliable <- keep(models, \(m) isTRUE(uptime_30m(m$id) >= min_uptime_30m))
+  reliable <- keep(models, \(m) isTRUE(unname(uptime[m$id]) >= min_uptime_30m))
   if (length(reliable) == 0) {
     log_warn("No free model has {min_uptime_30m}% uptime in the last 30 minutes; listing all of them")
     return(models)
@@ -108,23 +120,14 @@ keep_reliable <- function(models) {
   reliable
 }
 
-#' Fetch free text models from OpenRouter, uncached (only those supporting tool calling if
-#' `tools_only`). Errors if the request fails or none are found.
-#' @export
-fetch_free_models <- function(tools_only = FALSE) {
-  models <- get_json(models_url)
-
-  free <- keep(models$data, \(m) {
-    is_free(m) && is_text_only(m) && !m$id %in% excluded_models && (!tools_only || supports_tools(m))
-  })
-  free <- keep_usable(free)
-  if (length(free) == 0) {
-    stop("No free text models in the response")
+# The reliable models among `free` (only those supporting tool calling if `tools_only`) as a named
+# character vector (name = label, value = id): most intelligent first (the chat starts with the
+# first one); unscored models after, newest first; low priority models last
+pick_models <- function(free, uptime, tools_only) {
+  if (tools_only) {
+    free <- keep(free, supports_tools)
   }
-  free <- keep_reliable(free)
-
-  # Most intelligent first (the chat starts with the first one); unscored models after, newest first;
-  # low priority models last
+  free <- keep_reliable(free, uptime)
   score <- map_dbl(free, intelligence)
   created <- map_dbl(free, \(m) if (is.numeric(m$created) && length(m$created) == 1) m$created else 0)
   ids <- set_names(map_chr(free, "id"), map_chr(free, "name"))
@@ -132,21 +135,45 @@ fetch_free_models <- function(tools_only = FALSE) {
   ids[order(ids %in% low_priority_models, -score, -created)]
 }
 
-# Shared by all sessions in this R process. memoise only stores returned values,
-# so a failed fetch is retried on the next call instead of being cached.
+#' Fetch free text models from OpenRouter, uncached: `list(all =, tools =)`, the model lists for
+#' plain chat and for Agent mode (only models supporting tool calling), picked from one catalogue
+#' and one round of uptime lookups. Errors if the request fails or no free text models are found.
+#' @export
+fetch_free_models <- function() {
+  models <- get_json(models_url)
+  free <- keep(models$data, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
+  free <- keep_usable(free)
+  if (length(free) == 0) {
+    stop("No free text models in the response")
+  }
+  uptime <- if (test_number(min_uptime_30m)) uptimes_30m(map_chr(free, "id")) else NULL
+  list(all = pick_models(free, uptime, tools_only = FALSE), tools = pick_models(free, uptime, tools_only = TRUE))
+}
+
+# Shared by all sessions in this R process, and by both model lists. memoise only stores returned
+# values, so a failed fetch is retried on the next call instead of being cached.
 cached_fetch <- memoise(fetch_free_models, cache = cache_mem(max_age = models_cache_seconds))
 
 #' Free text models on OpenRouter as a named character vector (name = label, value = id),
 #' only those supporting tool calling if `tools_only`.
 #'
-#' Uses `fetch` (cached for `models_cache_seconds` by default); falls back to the
-#' fallback model (a router that supports tools) if it fails.
+#' Uses `fetch` (cached for `models_cache_seconds` by default; see fetch_free_models()); falls back
+#' to the fallback model (a router that supports tools) if it fails or lists no model.
 #' @export
 free_models <- function(fetch = cached_fetch, tools_only = FALSE) {
-  tryCatch(fetch(tools_only = tools_only), error = function(e) {
-    log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
-    set_names(fallback_model, fallback_model_label)
-  })
+  tryCatch(
+    {
+      ids <- fetch()[[if (tools_only) "tools" else "all"]]
+      if (length(ids) == 0) {
+        stop(str_c("No free text models", if (tools_only) " with tool calling", " in the response"))
+      }
+      ids
+    },
+    error = function(e) {
+      log_warn("Could not fetch OpenRouter models: {conditionMessage(e)}")
+      set_names(fallback_model, fallback_model_label)
+    }
+  )
 }
 
 # Reasoning effort levels the model offers (OpenRouter's `reasoning.supported_efforts`, highest first)

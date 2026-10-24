@@ -26,13 +26,18 @@ test_that("ui() renders the model dropdown with the default model", {
   expect_match(html, 'value="openrouter/free"', fixed = TRUE)
   expect_match(html, 'id="chat_stats"', fixed = TRUE)
   # Effort dropdown, greyed out until the server fills it in
-  expect_match(html, '<select id="chat_effort" class="shiny-input-select form-select form-select-sm w-auto py-0" style="font-size: inherit;" disabled>', fixed = TRUE)
+  expect_match(
+    html,
+    '<select id="chat_effort" class="shiny-input-select form-select form-select-sm w-auto py-0" style="font-size: inherit;" disabled>',
+    fixed = TRUE
+  )
   expect_match(html, 'id="chat_mode"', fixed = TRUE)
   # Mode tabs: a radio input with a pill per mode, plain chat selected
   expect_match(html, 'name="chat_mode" id="chat_mode_chat" value="chat" autocomplete="off" checked', fixed = TRUE)
   expect_match(html, 'value="world_bank"', fixed = TRUE)
-  # The chat greeting points to World Bank data mode
-  expect_match(html, "World Bank data", fixed = TRUE)
+  # The Agent mode pill, and the chat greeting explaining both modes
+  expect_match(html, world_bank$label, fixed = TRUE)
+  expect_match(html, "Pick a mode below the message box", fixed = TRUE)
   expect_match(html, 'href="https://github.com/TiagoAdriaNunes/shinychat-openrouter/"', fixed = TRUE)
   expect_match(html, "fa-github", fixed = TRUE)
 })

@@ -6,11 +6,15 @@
 default:
   app:
     title: "shinychat + OpenRouter"
-    # Markdown; shown until the first message. Points people to the World Bank data mode tab.
+    # Markdown; shown until the first message. Explains the two tabs under the message box
+    # (chat_mode_label and world_bank.label).
     greeting: |
       **Hello!** How can I help you today?
 
-      Want real figures? Pick **World Bank data** below the message box to ask about GDP, inflation, population and more for any country since 1990.
+      Pick a mode below the message box:
+
+      - **Chat**: talk with a free AI model about anything. It answers from what it learned in training, so its facts and figures can be out of date or wrong.
+      - **Agent mode**: an AI agent answers questions about the economy of any country since 1990 by looking the figures up in World Bank and IMF data. It ranks and compares countries, measures growth and draws charts, and shows each calculation it runs. Only models that can use tools are listed there.
     # Label of the plain chat tab under the message box (the other tab is world_bank.label)
     chat_mode_label: "Chat"
     placeholder: "Ask me anything..."
@@ -21,7 +25,7 @@ default:
     show_response_stats: true
     # Reasoning effort dropdown next to the model: the levels the selected model offers (OpenRouter's
     # `reasoning.supported_efforts`), starting at the model's default each time a model is picked
-    # (World Bank data mode starts at world_bank.reasoning_effort instead).
+    # (Agent mode starts at world_bank.reasoning_effort instead).
     # Greyed out, showing effort_default_label, for models without effort levels.
     effort_label: "Effort:"
     effort_default_label: "Default"
@@ -80,18 +84,32 @@ default:
       # Router: picks any free model at random, including the ones excluded here
       - "openrouter/free"
 
-  # "World Bank data" tab under the message box: a commons agent (https://posit-dev.github.io/commons/r/)
+  # "Agent mode" tab under the message box: a commons agent (https://posit-dev.github.io/commons/r/)
   # that answers from World Development Indicators downloaded with the WDI package
-  # (https://vincentarelbundock.github.io/WDI/). Only free models that support tool calling are listed.
+  # (https://vincentarelbundock.github.io/WDI/) and IMF indicators (`sources`). Only free models that
+  # support tool calling are listed. (The section keeps its first name, world_bank.)
   world_bank:
-    label: "World Bank data"
-    # Replaces the greeting when the World Bank data tab is picked (switching mode starts a new chat),
+    label: "Agent mode"
+    # Replaces the greeting when the Agent mode tab is picked (switching mode starts a new chat),
     # followed by the catalog below
     greeting: |
-      **World Bank data mode.** Answers come from the World Bank's World Development Indicators: GDP, growth, inflation, unemployment, population, trade, debt and inequality for any country or region since 1990. Click a question to try it, or ask your own.
+      **Agent mode.** The agent answers from World Bank and IMF data instead of its own memory: it looks the figures up, ranks and compares countries, measures growth and draws charts, and shows each calculation it runs. Click a question to try it, or ask your own.
+    # Where the data comes from, listed in the catalog. Each indicator's `source` is one of these ids
+    # (World Bank, `wdi`, when it has none); `short_name` is its column in the indicator list.
+    sources:
+      - id: wdi
+        name: "World Bank World Development Indicators"
+        short_name: "World Bank"
+        url: "https://databank.worldbank.org/source/world-development-indicators"
+        covers: "GDP, growth, inflation, unemployment, population, trade, investment and inequality for every country, region and income group since 1990"
+      - id: imf
+        name: "IMF DataMapper"
+        short_name: "IMF"
+        url: "https://www.imf.org/external/datamapper"
+        covers: "government debt, net debt, deficits and interest, current account and share of world GDP (World Economic Outlook, Fiscal Monitor and Public Finances in Modern History, without their forecasts), and private, household and corporate debt (Global Debt Database), for countries since 1990"
     # Shown under the greeting (catalog_markdown() in app/logic/catalog.R): the kinds of questions,
-    # then collapsible lists of the indicators (each with its `example` below) and the country groups.
-    # Every example is a shinychat suggestion: clicking it fills the message box.
+    # then collapsible lists of the indicators (each with its `example` below), the country groups
+    # and the data sources. Every example is a shinychat suggestion: clicking it fills the message box.
     catalog:
       questions_heading: "What you can ask"
       questions:
@@ -109,15 +127,17 @@ default:
           example: "Plot inflation in Brazil and Mexico since 2000"
       indicators_heading: "Indicators"
       indicator_column: "Indicator"
+      source_column: "Source"
       example_column: "Try"
       groups_heading: "Country groups"
       groups_text: "Ask about a group's member countries, e.g."
       group_example: "Which Mercosur countries grew most since 2020?"
-    unavailable: "World Bank data isn't available right now. Please try again later."
+      sources_heading: "Data sources"
+    unavailable: "Agent mode isn't available right now because its data couldn't be loaded. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
     # the first start. The mode turns on when the download ends; picking Chat cancels the wait.
-    loading: "Downloading the World Bank data, about 30 seconds. This mode turns on by itself when it is ready."
+    loading: "Downloading the data for Agent mode, about 30 seconds. Agent mode turns on by itself when it is ready."
     # Error returned to the model when call_measure's `arguments` isn't one JSON object (e.g. single
     # quotes, bare key: value pairs, or a cut-off "{"). {received} is what it sent.
     invalid_arguments: >-
@@ -134,12 +154,13 @@ default:
     optional_argument: "Optional: send null to leave it out (the usual case), a value only when the question needs it."
     # Added to the question when the model answered without looking anything up; the reply is
     # dropped and the question asked once more (see grounded_stream() in app/logic/agent.R)
-    lookup_nudge: "(Answer this from the World Bank data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
+    lookup_nudge: "(Answer this from the data: look the figures up with your tools before replying, and do not use your own knowledge for any number.)"
     # Shown instead of the reply when the model answered twice without looking anything up (its
     # figures would be made up). {model} is replaced with the model's name.
-    no_lookup: "**{model} didn't look anything up in the World Bank data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
+    no_lookup: "**{model} didn't look anything up in the data**, so its answer isn't shown. Please ask about an indicator for a country or region, or select a different model from the dropdown below."
     # Indicators downloaded for every country and aggregate. `name` is the column name in the
-    # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()).
+    # agent's tables; `code` is the World Bank series code (find more with WDI::WDIsearch()), or
+    # the IMF indicator with `source: imf` (see `sources`). Changing a code downloads the data again.
     # `description` is shown to the agent and in the catalog; `example` is the catalog's question for it.
     indicators:
       - name: gdp_usd
@@ -188,15 +209,78 @@ default:
         code: BX.KLT.DINV.WD.GD.ZS
         description: "Foreign direct investment, net inflows (% of GDP)"
         example: "Which G20 countries get the most foreign investment as a share of GDP?"
+      # From the IMF (`source: imf`, `code` is an IMF DataMapper indicator, see `imf` below): the World
+      # Bank's central government debt (GC.DOD.TOTL.GD.ZS) had 34 countries for 2024 and none of
+      # France, Japan, Italy or Greece, so a "highest debt" ranking left out the most indebted
       - name: gov_debt_pct_gdp
-        code: GC.DOD.TOTL.GD.ZS
-        description: "Central government debt, total (% of GDP); reported by few countries"
+        code: GGXWDG_NGDP
+        source: imf
+        description: "General government gross debt (% of GDP), IMF World Economic Outlook"
         example: "Which countries have the highest government debt?"
+      # More IMF indicators the World Bank data here doesn't have. Household and corporate debt use
+      # the "loans and debt securities" series: 86 countries, against 44 for "all instruments".
+      - name: gov_net_debt_pct_gdp
+        code: GGXWDN_G01_GDP_PT
+        source: imf
+        description: "General government net debt (% of GDP): gross debt minus financial assets, IMF Fiscal Monitor"
+        example: "Which countries have the lowest government net debt?"
+      - name: gov_balance_pct_gdp
+        code: GGXCNL_NGDP
+        source: imf
+        description: "General government net lending/borrowing (% of GDP): budget surplus (+) or deficit (-), IMF World Economic Outlook"
+        example: "Which countries have the largest government budget deficits?"
+      - name: gov_interest_pct_gdp
+        code: ie
+        source: imf
+        description: "Interest paid on public debt (% of GDP), IMF Public Finances in Modern History"
+        example: "How much does Brazil's government pay in interest on its debt?"
+      - name: current_account_pct_gdp
+        code: BCA_NGDPD
+        source: imf
+        description: "Current account balance (% of GDP): surplus (+) or deficit (-) with the rest of the world, IMF World Economic Outlook"
+        example: "Which countries have the biggest current account surpluses?"
+      - name: world_gdp_share_ppp_pct
+        code: PPPSH
+        source: imf
+        description: "Share of world GDP at purchasing power parity (%), IMF World Economic Outlook"
+        example: "How has China's share of the world economy changed since 1990?"
+      - name: private_debt_pct_gdp
+        code: PVD_LS
+        source: imf
+        description: "Private debt: loans and debt securities of households and nonfinancial companies (% of GDP), IMF Global Debt Database"
+        example: "Which countries have the highest private debt?"
+      - name: household_debt_pct_gdp
+        code: HH_LS
+        source: imf
+        description: "Household debt: loans and debt securities (% of GDP), IMF Global Debt Database"
+        example: "How has household debt in the United States changed since 2000?"
+      - name: corporate_debt_pct_gdp
+        code: NFC_LS
+        source: imf
+        description: "Nonfinancial corporate debt: loans and debt securities (% of GDP), IMF Global Debt Database"
+        example: "Compare corporate debt in China and the United States"
       - name: gini
         code: SI.POV.GINI
         description: "Gini index (0 = perfect equality, 100 = perfect inequality); surveyed irregularly"
         example: "What is Brazil's Gini index?"
     start_year: 1990
+    # Indicators with `source: imf` come from the IMF DataMapper API ({code} is the indicator) and fill
+    # the countries table only: the IMF's country groups aren't the World Bank's aggregates. Years from
+    # the download year on are dropped (World Economic Outlook and Fiscal Monitor forecasts). Not the
+    # API's `projection-year`: for the Global Debt Database it is the last year with actual data.
+    imf:
+      # Current API version per https://www.imf.org/external/datamapper/api/help
+      url: "https://www.imf.org/external/datamapper/api/v2/{code}"
+      # The API documents no rate limit; the app sends one request per IMF indicator per download.
+      # A failed request (timeout, dropped connection, 429 or 503) is tried again up to max_tries in
+      # all, waiting longer each time (or as long as a Retry-After header says). The User-Agent names
+      # the app and its source_url.
+      timeout_seconds: 30
+      max_tries: 3
+      # IMF codes that differ from the World Bank's ISO3 codes
+      iso3:
+        UVK: XKX # Kosovo
+        WBG: PSE # West Bank and Gaza
     # Country groups the measures can filter by (`group` argument), as the agent's `groups` table.
     # The World Bank data has these groups' totals (aggregates) but not their members. Current
     # membership, applied to every year: update it when a country joins or leaves.
@@ -261,6 +345,7 @@ default:
     # caveats for reading the indicators. Paths are relative to the project root.
     context_files:
       - "app/context/world-bank.md"
+      - "app/context/imf.md"
     # commons runs the agent's R code in an OS sandbox, available on Linux and macOS only. On other
     # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
     # that are NOT a security boundary: only for local development (see the `development` section).

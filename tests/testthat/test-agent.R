@@ -9,8 +9,11 @@ box::use(
   promises[promise_resolve],
   purrr[keep, map_chr],
   S7[S7_inherits],
-  stringr[fixed, str_c, str_remove, str_replace_all],
-  testthat[expect_equal, expect_error, expect_false, expect_message, expect_null, expect_s3_class, expect_true, test_that],
+  stringr[fixed, regex, str_c, str_extract, str_remove, str_replace_all],
+  testthat[
+    expect_equal, expect_error, expect_false, expect_match, expect_message, expect_null, expect_s3_class, expect_true,
+    test_that,
+  ],
   withr[defer, local_envvar, local_options],
 )
 
@@ -314,6 +317,17 @@ test_that("agent_instructions() lists every configured indicator for direct meas
   }
   expect_false(grepl("{indicators}", text, fixed = TRUE))
   expect_false(grepl("{groups}", text, fixed = TRUE))
+})
+
+test_that("latest_values() lists every configured indicator column for the model", {
+  docs <- str_c(readLines(measures_file), collapse = "\n")
+  indicator_param <- str_extract(
+    docs,
+    regex("@param indicator `string` Indicator column:.*?@param economies", dotall = TRUE)
+  )
+  for (name in map_chr(world_bank$indicators, "name")) {
+    expect_match(indicator_param, str_c("\\b", name, "\\b"), info = name)
+  }
 })
 
 test_that("wdi_source() has the configured groups as a table of members", {
