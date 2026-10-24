@@ -14,7 +14,7 @@ box::use(
 )
 
 box::use(
-  . / client[guard_stream, set_response_timeout],
+  . / client[guard_stream, watch_stream],
   . / config[fallback_model, world_bank],
   . / definitions[definitions_markdown],
   . / dictionary[group_names, wdi_source],
@@ -83,14 +83,14 @@ new_agent <- function(model, label, source, context = context_files) {
       network = "none"
     )
   })
-  set_response_timeout(agent, world_bank$response_timeout_seconds)
   describe_tools(agent)
   measure_tools(agent, layer)
   check_measure_calls(agent)
   if (isTRUE(world_bank$require_lookup)) {
     require_lookup(agent)
   }
-  guard_stream(ground_agent(show_charts(agent), label), label)
+  # The stall check goes innermost, to see every chunk, including the text grounded_stream() holds
+  guard_stream(ground_agent(show_charts(watch_stream(agent)), label), label)
 }
 
 #' Build the agent's context search index now instead of during the first question; it is cached in
