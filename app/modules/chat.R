@@ -64,7 +64,7 @@ effort_input_id <- function(id) str_c(id, "_effort")
 stats_output_id <- function(id) str_c(id, "_stats")
 
 # page_chat() owns the whole page, so this module is not namespaced: the same
-# literal `id` is used for the UI and for chat_server().
+# literal `id` is used for the UI and for chat_server()
 #' @export
 ui <- function(id) {
   page_chat(
@@ -210,7 +210,7 @@ server <- function(
   # for the World Bank agent, its R session and result handles (a new agent would lose them).
   # Failed requests become a chat message naming the model in use (see app/logic/client.R).
   client_for <- function(model, on) {
-    label <- \(model_id) label_for(model_id, on)
+    label <- function(model_id) label_for(model_id, on)
     if (on) {
       new_agent(model, label, source)
     } else {

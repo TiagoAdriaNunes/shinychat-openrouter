@@ -2,9 +2,11 @@ box::use(
   cachem[cache_mem],
   callr[r_bg],
   checkmate[test_file_exists, test_null, test_subset],
+  dplyr[across, all_of, arrange, everything, filter, mutate, rename, rows_update, select],
   logger[log_info, log_warn],
   memoise[forget, memoise],
-  purrr[discard, keep, map, map_chr, reduce, set_names],
+  purrr[discard, keep, map_chr, reduce, set_names],
+  rlang[`:=`],
   stringr[str_c],
   WDI[WDI],
 )
@@ -32,15 +34,10 @@ indicator_sources <- set_names(
 )
 
 country_columns <- c("country", "iso3c", "region", "income", "year")
-aggregate_columns <- c("aggregate", "iso3c", "year")
 
 # WDI() labels each indicator column; plain columns keep the tables simple for duckdb
 strip_labels <- function(df) {
-  df[] <- map(df, \(column) {
-    attr(column, "label") <- NULL
-    column
-  })
-  df
+  mutate(df, across(everything(), \(column) structure(column, label = NULL)))
 }
 
 #' Split a WDI(extra = TRUE) download into `countries` (one row per economy and year) and
@@ -50,29 +47,28 @@ strip_labels <- function(df) {
 #' column's source and code.
 #' @export
 split_panel <- function(raw) {
-  for (name in setdiff(indicator_names, names(raw))) {
-    raw[[name]] <- NA_real_
-  }
-  is_country <- !is.na(raw$region) & raw$region != "Aggregates"
+  raw[setdiff(indicator_names, names(raw))] <- NA_real_
+  raw <- strip_labels(raw)
 
-  countries <- raw[is_country, c(country_columns, indicator_names)]
-  aggregates <- raw[!is_country, c("country", "iso3c", "year", indicator_names)]
-  names(aggregates)[1] <- "aggregate"
-
-  tidy <- function(df, by) {
-    df <- strip_labels(df[order(df[[by]], df$year), ])
-    rownames(df) <- NULL
-    df
-  }
-  list(countries = tidy(countries, "country"), aggregates = tidy(aggregates, "aggregate"), codes = indicator_sources)
+  countries <- raw |>
+    filter(!is.na(region), region != "Aggregates") |>
+    select(all_of(country_columns), all_of(indicator_names)) |>
+    arrange(country, year)
+  aggregates <- raw |>
+    filter(is.na(region) | region == "Aggregates") |>
+    select(aggregate = country, iso3c, year, all_of(indicator_names)) |>
+    arrange(aggregate, year)
+  list(countries = countries, aggregates = aggregates, codes = indicator_sources)
 }
 
 #' Fill the `name` column of the panel's countries with IMF `values` (columns iso3c, year, value,
-#' from fetch_imf()). Aggregates stay empty: the IMF's country groups aren't the World Bank's.
+#' from fetch_imf()), replacing what it held. Aggregates stay empty: the IMF's country groups aren't
+#' the World Bank's.
 #' @export
 add_imf <- function(panel, name, values) {
-  found <- match(str_c(panel$countries$iso3c, "-", panel$countries$year), str_c(values$iso3c, "-", values$year))
-  panel$countries[[name]] <- values$value[found]
+  panel$countries <- panel$countries |>
+    mutate("{name}" := NA_real_) |>
+    rows_update(rename(values, "{name}" := value), by = c("iso3c", "year"), unmatched = "ignore")
   panel
 }
 

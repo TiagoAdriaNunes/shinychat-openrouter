@@ -7,6 +7,7 @@ box::use(
   dplyr[all_of, arrange, desc, filter, min_rank, mutate, n, select, semi_join, slice_max],
   duckplyr[methods_overwrite],
   glue[glue],
+  stringr[str_to_lower, str_trim],
   tidyr[pivot_longer],
 )
 
@@ -32,9 +33,9 @@ profile_id_columns <- c("country", "iso3c", "region", "income", "year")
 country_profile <- function(wdi, economy, year = NULL) {
   countries <- dbReadTable(wdi, "countries")
   indicators <- setdiff(names(countries), profile_id_columns)
-  wanted <- tolower(trimws(economy))
+  wanted <- str_to_lower(str_trim(economy))
   found <- countries |>
-    filter(tolower(country) == wanted | tolower(iso3c) == wanted)
+    filter(str_to_lower(country) == wanted | str_to_lower(iso3c) == wanted)
   if (!test_data_frame(found, min.rows = 1)) {
     stop(
       glue(

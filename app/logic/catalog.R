@@ -40,7 +40,7 @@ catalog_markdown <- function(
   sources = world_bank$sources
 ) {
   questions <- map_chr(catalog$questions, \(q) str_c("- ", q$label, ": ", suggestion(q$example)))
-  indicator_rows <- map_chr(indicators, \(i) {
+  indicator_rows <- map_chr(indicators, function(i) {
     cells <- c(htmlEscape(i$description), htmlEscape(indicator_source(i, sources)$short_name), suggestion(i$example))
     str_c("| ", str_flatten(table_cell(cells), " | "), " |")
   })

@@ -32,7 +32,7 @@ measure_layer <- memoise(\() semantic_layer(measure_files))
 
 # Data dictionary (data-dict.yaml) describing the agent's tables, written to a temporary file
 dictionary_file <- function(panel) {
-  indicator_columns <- map(world_bank$indicators, \(i) {
+  indicator_columns <- map(world_bank$indicators, function(i) {
     source <- glue("World Bank series {i$code}.")
     if (identical(i$source, "imf")) {
       source <- glue("IMF indicator {i$code}; countries only, empty in `aggregates`.")
@@ -130,7 +130,7 @@ is_thinking <- function(chunk) S7_inherits(chunk, ContentThinking)
 #' TRUE if `turns` contain a successful tool result: data already looked up in this conversation.
 #' @export
 has_lookup <- function(turns) {
-  some(turns, \(turn) {
+  some(turns, function(turn) {
     some(turn@contents, \(content) S7_inherits(content, ContentToolResult) && test_null(content@error))
   })
 }
@@ -150,7 +150,7 @@ describe_tools <- function(agent, descriptions = world_bank$tool_descriptions) {
     tools[[name]]@description <- descriptions[[name]]
   }
   agent$set_tools(tools)
-  agent
+  invisible(agent)
 }
 
 #' Stop with `world_bank$invalid_arguments` (how to write them, and what was received) unless a
@@ -176,7 +176,7 @@ check_measure_calls <- function(agent) {
   original <- tools$call_measure
   S7_data(tools$call_measure) <- function(name, arguments) original(name, check_arguments(arguments))
   agent$set_tools(tools)
-  agent
+  invisible(agent)
 }
 
 # Values models send for an argument they mean to leave out: they count as not sent. Any text without
@@ -230,7 +230,7 @@ measure_tools <- function(agent, layer) {
     tools[[measure@name]] <- tool
   }
   agent$set_tools(tools)
-  agent
+  invisible(agent)
 }
 
 #' Make the first request for each new question require a tool call (`tool_choice = "required"`), so
@@ -244,7 +244,7 @@ require_lookup <- function(agent) {
     question <- !some(turns[[length(turns)]]@contents, \(content) S7_inherits(content, ContentToolResult))
     set_api_arg(agent, "tool_choice", if (question && !has_lookup(turns)) "required")
   })
-  agent
+  invisible(agent)
 }
 
 #' Stream an agent reply only if it looks the data up. Free models often answer data questions from
@@ -384,7 +384,7 @@ new_agent <- function(model, label, source) {
 ground_agent <- function(agent, label) {
   # list2(), not list(): shinychat calls stream_async(!!!user_input, ...), and only rlang's dots
   # splice `!!!` (base list() would evaluate it as three logical NOTs: "invalid argument type")
-  wrap_stream(agent, \(original, ...) {
+  wrap_stream(agent, function(original, ...) {
     name <- if (is.function(label)) label(agent$get_model()) else label
     grounded_stream(original, agent, list2(...), name)
   })
@@ -392,7 +392,8 @@ ground_agent <- function(agent, label) {
 
 #' Build the agent's context search index (from the data dictionary) now instead of during the
 #' first question. It is stored in the `commons.context_cache` directory, so later agents reuse it.
-#' Never errors: if the agent can't be created (e.g. no OS sandbox), World Bank data mode will say so.
+#' Never errors: if the agent can't be created (e.g. no OS sandbox), Agent mode will say so. Returns
+#' `panel` invisibly.
 #' @export
 prewarm_agent <- function(panel) {
   tryCatch(
@@ -402,5 +403,5 @@ prewarm_agent <- function(panel) {
     },
     error = function(e) log_warn("Could not prewarm the World Bank agent: {conditionMessage(e)}")
   )
-  invisible(NULL)
+  invisible(panel)
 }

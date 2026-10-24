@@ -81,7 +81,7 @@ uptime_from <- function(resp, id) {
       if (!inherits(resp, "httr2_response")) {
         stop(resp)
       }
-      uptime <- map_dbl(resp_body_json(resp)$data$endpoints, \(e) {
+      uptime <- map_dbl(resp_body_json(resp)$data$endpoints, function(e) {
         if (test_number(e$uptime_last_30m)) e$uptime_last_30m else NA_real_
       })
       if (all(is.na(uptime))) NA_real_ else max(uptime, na.rm = TRUE)

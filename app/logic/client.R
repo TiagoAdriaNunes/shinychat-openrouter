@@ -123,7 +123,7 @@ wrap_stream <- function(client, wrap) {
   unlockBinding("stream_async", client)
   client$stream_async <- function(...) wrap(stream_async, ...)
   lockBinding("stream_async", client)
-  client
+  invisible(client)
 }
 
 #' Make an ellmer Chat's streamed responses never error (see safe_stream()). `label` is the model
@@ -131,7 +131,7 @@ wrap_stream <- function(client, wrap) {
 #' `set_model()`).
 #' @export
 guard_stream <- function(client, label) {
-  wrap_stream(client, \(original, ...) {
+  wrap_stream(client, function(original, ...) {
     safe_stream(original(...), if (is.function(label)) label(client$get_model()) else label)
   })
 }
