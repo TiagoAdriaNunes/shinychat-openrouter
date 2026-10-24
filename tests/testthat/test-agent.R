@@ -69,7 +69,8 @@ test_that("indicator_chart() shows the user a chart and gives the model a text s
   dependencies <- map_chr(renderTags(chart@extra$chart)$dependencies, "name")
   expect_true(all(c("htmlwidgets", "echarts4r") %in% dependencies))
   expect_s3_class(chart@extra$chart, "shiny.tag")
-  expect_equal(chart@extra$data$economy, c("Brazil", "Chile", "Brazil"))
+  # No rows for commons to offer to run_r: re-analysing them there marks the answer untrusted
+  expect_null(chart@extra$data)
 
   expect_error(indicator_chart(wdi, "inflation_pct", "Atlantis"), "No World Bank economy named Atlantis")
   expect_error(indicator_chart(wdi, "happiness", "Brazil"), "Unknown indicator 'happiness'")
@@ -174,7 +175,9 @@ test_that("the economy measures take a group's members, with or without named ec
   expect_equal(latest_values(wdi, "gdp_usd", group = "Mercosur")$economy, "Brazil")
   expect_equal(latest_values(wdi, "gdp_usd", "World", group = "Mercosur")$economy, c("Brazil", "World"))
   expect_equal(unique(indicator_series(wdi, "inflation_pct", group = "Pacific Alliance")$economy), "Chile")
-  expect_equal(unique(indicator_chart(wdi, "inflation_pct", group = "Mercosur")@extra$data$economy), "Brazil")
+  mercosur_chart <- indicator_chart(wdi, "inflation_pct", group = "Mercosur")@value
+  expect_match(mercosur_chart, "Brazil:", fixed = TRUE)
+  expect_false(grepl("Chile:", mercosur_chart, fixed = TRUE))
   expect_error(latest_values(wdi, "gdp_usd"), "Give economies, a group, or both")
   expect_error(indicator_chart(wdi, "gdp_usd"), "Give economies, a group, or both")
 })

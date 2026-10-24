@@ -3,9 +3,10 @@
 #
 # A chart measure returns an ellmer::ContentToolResult: `extra$chart` is the interactive chart, which
 # chart_stream() (app/logic/agent.R) puts in the reply itself (as `extra$display` it would sit inside
-# the collapsed "Ran a trusted calculation" card), `value` a text summary for the model and
-# `extra$data` the plotted rows (commons offers them to run_r). Never return the plot itself or an
-# image: commons would send it to the model, and free models that can't read images fail with
+# the collapsed "Ran a trusted calculation" card), and `value` a text summary for the model. No
+# `extra$data`: commons would offer the rows to run_r ("Available to `run_r` as `r1`"), and a model
+# then re-analysed them there, which marks the whole answer untrusted. Never return the plot itself
+# or an image: commons would send it to the model, and free models that can't read images fail with
 # "No endpoints found that support image input".
 
 box::use(
@@ -187,6 +188,6 @@ indicator_chart <- function(wdi, indicator, economies = NULL, start_year = NULL,
     value = str_flatten(c(glue("Line chart of {indicator} by year, shown to the user."), summary$text), "\n"),
     # In a div: shinychat drops the JavaScript dependencies of a bare widget or tag list in a
     # streamed reply (the chart's space stays blank)
-    extra = list(data = rows, chart = div(as.tags(chart)))
+    extra = list(chart = div(as.tags(chart)))
   )
 }
