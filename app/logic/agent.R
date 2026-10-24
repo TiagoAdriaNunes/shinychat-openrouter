@@ -8,7 +8,7 @@ box::use(
   logger[log_info, log_warn],
   memoise[memoise],
   purrr[discard, list_rbind, map, map_chr, some],
-  rlang[list2],
+  rlang[abort, exec, list2],
   S7[`S7_data<-`, S7_inherits],
   stringr[fixed, str_c, str_detect, str_flatten_comma, str_starts, str_to_lower, str_trim],
   withr[with_options],
@@ -162,7 +162,7 @@ check_arguments <- function(arguments) {
   if (!test_string(arguments) || (validate(arguments) && str_starts(str_trim(arguments), fixed("{")))) {
     return(arguments)
   }
-  stop(glue_data(list(received = arguments), world_bank$invalid_arguments, .envir = baseenv()), call. = FALSE)
+  abort(glue_data(list(received = arguments), world_bank$invalid_arguments, .envir = baseenv()), call = NULL)
 }
 
 #' Make the agent's call_measure tool check `arguments` (see check_arguments()) before commons parses
@@ -266,7 +266,7 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
   before <- agent$get_turns()
   earlier <- has_lookup(before)
   if (earlier) {
-    for (chunk in await_each(do.call(original, c(args$inputs, args$options)))) {
+    for (chunk in await_each(exec(original, !!!args$inputs, !!!args$options))) {
       if (is_tool_request(chunk)) {
         log_info("World Bank agent ({model}) called {chunk@name}")
       }
@@ -284,7 +284,7 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
     if (!looked_up && !cancelled) {
       agent$set_turns(before)
       held <- list()
-      for (chunk in await_each(do.call(original, c(inputs, args$options)))) {
+      for (chunk in await_each(exec(original, !!!inputs, !!!args$options))) {
         if (is_tool_request(chunk)) {
           log_info("World Bank agent ({model}) called {chunk@name}")
         }

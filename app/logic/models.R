@@ -5,6 +5,7 @@ box::use(
   logger[log_info, log_warn],
   memoise[memoise],
   purrr[compact, keep, map, map_chr, map_dbl, map2_dbl, set_names],
+  rlang[abort, is_condition],
   stringr[str_c, str_flatten],
 )
 
@@ -76,20 +77,21 @@ keep_usable <- function(models) {
 # <models_url>/<id>/endpoints response (`resp`, or the error its request ended with); NA when
 # OpenRouter has no figure (no requests in that time) or the lookup failed
 uptime_from <- function(resp, id) {
+  failed <- function(cnd) {
+    log_warn("Could not fetch the uptime of {id}: {conditionMessage(cnd)}")
+    NA_real_
+  }
+  if (is_condition(resp)) {
+    return(failed(resp))
+  }
   tryCatch(
     {
-      if (!inherits(resp, "httr2_response")) {
-        stop(resp)
-      }
       uptime <- map_dbl(resp_body_json(resp)$data$endpoints, function(e) {
         if (test_number(e$uptime_last_30m)) e$uptime_last_30m else NA_real_
       })
       if (all(is.na(uptime))) NA_real_ else max(uptime, na.rm = TRUE)
     },
-    error = function(e) {
-      log_warn("Could not fetch the uptime of {id}: {conditionMessage(e)}")
-      NA_real_
-    }
+    error = failed
   )
 }
 
@@ -144,7 +146,7 @@ fetch_free_models <- function() {
   free <- keep(models$data, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
   free <- keep_usable(free)
   if (length(free) == 0) {
-    stop("No free text models in the response")
+    abort("No free text models in the response.")
   }
   uptime <- if (test_number(min_uptime_30m)) uptimes_30m(map_chr(free, "id")) else NULL
   list(all = pick_models(free, uptime, tools_only = FALSE), tools = pick_models(free, uptime, tools_only = TRUE))
@@ -165,7 +167,7 @@ free_models <- function(fetch = cached_fetch, tools_only = FALSE) {
     {
       ids <- fetch()[[if (tools_only) "tools" else "all"]]
       if (length(ids) == 0) {
-        stop(str_c("No free text models", if (tools_only) " with tool calling", " in the response"))
+        abort(str_c("No free text models", if (tools_only) " with tool calling", " in the response."))
       }
       ids
     },
