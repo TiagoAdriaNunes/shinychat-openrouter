@@ -21,7 +21,7 @@ box::use(
 )
 
 box::use(
-  app / logic / agent[agent_instructions, chart_stream, drop_empty_reply, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
+  app / logic / agent[agent_context, agent_instructions, chart_stream, drop_empty_reply, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
@@ -391,6 +391,17 @@ test_that("latest_values() lists every configured indicator column for the model
   for (name in map_chr(world_bank$indicators, "name")) {
     expect_match(indicator_param, str_c("\\b", name, "\\b"), info = name)
   }
+})
+
+test_that("agent_context() adds the panel's indicator definitions to the context files", {
+  files <- agent_context(panel)
+  expect_equal(length(files), length(world_bank$context_files) + 1)
+  definitions <- str_c(readLines(files[length(files)], encoding = "UTF-8"), collapse = "\n")
+  expect_match(definitions, world_bank$definitions$title, fixed = TRUE)
+  expect_match(definitions, "`inflation_pct`", fixed = TRUE)
+
+  # A panel without definitions (an old cache) keeps the configured notes only
+  expect_equal(length(agent_context(list())), length(world_bank$context_files))
 })
 
 test_that("wdi_source() has the configured groups as a table of members", {
