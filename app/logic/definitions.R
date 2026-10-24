@@ -8,8 +8,8 @@ box::use(
 )
 
 box::use(
-  . / catalog[indicator_source],
   . / config[world_bank],
+  . / indicators[indicator_source, is_imf],
 )
 
 # A WDI source organisation without its catalogue details (", uri: ...", ", note: ...", ...), its
@@ -34,7 +34,7 @@ clean_source <- function(text) {
 indicator_definitions <- function(imf_metadata = list()) {
   map(world_bank$indicators, function(i) {
     source <- indicator_source(i)
-    if (identical(source$id, "imf")) {
+    if (is_imf(i)) {
       definition <- imf_metadata[[i$code]]$description %||% NA_character_
       organization <- imf_metadata[[i$code]]$source %||% source$name
     } else {

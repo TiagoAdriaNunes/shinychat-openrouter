@@ -24,6 +24,13 @@ http_status <- function(cnd) {
   NA_integer_
 }
 
+#' A configured message `template` with {model} replaced by `model`. The template sees nothing else
+#' of the app's.
+#' @export
+model_message <- function(template, model) {
+  as.character(glue_data(list(model = model), template, .envir = baseenv()))
+}
+
 #' User-facing message for a failed model request (markdown), from the `errors` section of config.yml.
 #' @export
 error_message <- function(cnd, model) {
@@ -35,8 +42,7 @@ error_message <- function(cnd, model) {
   } else {
     error_messages$failed
   }
-  # The template only sees {model}, not the app's own objects
-  as.character(glue_data(list(model = model), template, .envir = baseenv()))
+  model_message(template, model)
 }
 
 # A model's control token written as text, e.g. <|tool_call_begin|> or <|im_end|>
@@ -68,13 +74,10 @@ scan_text <- function(text) {
   list(show = str_sub(text, 1, str_length(text) - str_length(held)), garbled = FALSE, held = held)
 }
 
-# Pass the response through; if the request fails, finish with a friendly message instead of
-# letting shinychat show the raw error. Cancelling stops the stream without an error, so it is unaffected.
-# If the reply text turns into control tokens (scan_text()), which some free models then repeat
-# without end, stop reading there and add the `garbled` message.
-# Note: coro emits the generator's final value as one last chunk, so the body must end with an
-# expression that returns NULL (shinychat ignores NULL chunks). Don't end it with a call that returns a value.
-# (coro generators can't assign the result of an `if` expression, hence the helpers.)
+#' Pass the response through, ending a failed request with a friendly message instead of shinychat's
+#' raw error, and cutting a reply that turns into control tokens (scan_text()), which some free
+#' models repeat without end. coro emits a generator's final value as a chunk, so the body ends with
+#' NULL; and coro can't assign the result of an `if`, hence the helpers.
 #' @export
 safe_stream <- async_generator(function(stream, model) {
   failed <- NULL
@@ -104,7 +107,7 @@ safe_stream <- async_generator(function(stream, model) {
   }
   if (garbled) {
     log_warn("Model {model} wrote control tokens as text; reply stopped")
-    yield(str_c("\n\n", as.character(glue_data(list(model = model), error_messages$garbled, .envir = baseenv()))))
+    yield(str_c("\n\n", model_message(error_messages$garbled, model)))
   }
   if (!test_null(failed)) {
     log_warn("Model {model} failed: {conditionMessage(failed)}")
@@ -155,10 +158,8 @@ new_client <- function(model, system_prompt, label = model) {
 }
 
 #' Send the request field `name` = `value` (an `api_args` entry) with an ellmer Chat's next requests,
-#' or stop sending it when `value` is NULL. Keeps the conversation. ellmer 0.5 has no setter (api_args
-#' are fixed when the client is made and `get_model_object()` returns a copy), so this edits the
-#' client's own Model and reapplies it the way set_model() does. Fields stay after set_model().
-#' Works inside $on_request_start() callbacks, which run before the request is built.
+#' or stop sending it when `value` is NULL, keeping the conversation. ellmer 0.5 has no setter, so this
+#' edits the client's private Model and reapplies it as set_model() does. Works in $on_request_start().
 #' @export
 set_api_arg <- function(client, name, value) {
   private <- client$.__enclos_env__$private

@@ -21,12 +21,14 @@ box::use(
 )
 
 box::use(
-  app / logic / agent[agent_context, agent_instructions, chart_stream, drop_empty_reply, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
+  app / logic / agent[agent_context, agent_instructions, new_agent, reasoning_args],
   app / logic / config[world_bank],
+  app / logic / dictionary[groups_table, wdi_source],
+  app / logic / grounding[chart_stream, drop_empty_reply, ground_agent, grounded_stream, has_lookup, require_lookup],
+  app / logic / tools[check_arguments],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
-  app / measures / charts[indicator_chart],
-  app / measures / `world-bank`[compound_growth, indicator_ranking, indicator_series, latest_values],
+  app / measures / `world-bank`[compound_growth, indicator_chart, indicator_ranking, indicator_series, latest_values],
 )
 
 panel <- split_panel(fake_wdi_raw())
@@ -45,8 +47,8 @@ local_wdi <- function(env = parent.frame()) {
   con
 }
 
-test_that("commons reads the four measures from the measures file", {
-  expect_message(print(semantic_layer(measures_file)), "4 measures")
+test_that("commons reads the five measures from the measures file", {
+  expect_message(print(semantic_layer(measures_file)), "5 measures")
 })
 
 test_that("commons reads every measure in the measures directory", {

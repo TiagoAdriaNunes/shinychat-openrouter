@@ -8,7 +8,7 @@ box::use(
 )
 
 box::use(
-  app / logic / models[fetch_free_models, fetch_reasoning_options, free_models, nearest_effort, reasoning_options],
+  app / logic / models[fetch_free_models, free_models, nearest_effort, reasoning_options],
 )
 
 test_that("free_models() keeps free text-only, non-excluded models, most intelligent first, low priority last", {
@@ -101,7 +101,7 @@ test_that("the memoised fetch does not cache failures", {
 
 test_that("reasoning_options() lists each model's effort levels and default, or none when it can't fetch them", {
   local_mocked_responses(fake_openrouter())
-  expect_equal(reasoning_options(fetch = fetch_reasoning_options), fake_efforts)
+  expect_equal(reasoning_options(fetch = fetch_free_models), fake_efforts)
 
   expect_equal(reasoning_options(fetch = function() stop("offline")), list())
 })

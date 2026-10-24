@@ -15,9 +15,9 @@ box::use(
   . / config[world_bank],
   . / definitions[indicator_definitions],
   . / imf[fetch_imf, fetch_imf_metadata],
+  . / indicators[is_imf],
 )
 
-is_imf <- function(indicator) identical(indicator$source, "imf")
 imf_indicators <- keep(world_bank$indicators, is_imf)
 wdi_indicators <- discard(world_bank$indicators, is_imf)
 
