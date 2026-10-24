@@ -18,6 +18,7 @@ box::use(
 box::use(
   . / client[chunk_text, guard_stream, set_api_arg, set_response_timeout, wrap_stream],
   . / config[fallback_model, world_bank],
+  . / definitions[definitions_markdown],
 )
 
 # Layer files from config.yml, resolved from the project root so they work from any working directory
@@ -102,6 +103,22 @@ dictionary_file <- function(panel) {
   write_yaml(dictionary, path)
   path
 }
+
+# The panel's indicator definitions as a Markdown file for the context layer (see
+# definitions_markdown()), or none when it has none. A temporary file is enough: commons caches the
+# context index by the documents' text.
+definitions_file <- function(panel) {
+  if (test_null(panel$definitions)) {
+    return(NULL)
+  }
+  path <- tempfile("indicator-definitions-", fileext = ".md")
+  writeLines(definitions_markdown(panel$definitions), path, useBytes = TRUE)
+  path
+}
+
+#' The agent's context files: `world_bank$context_files` and the panel's indicator definitions.
+#' @export
+agent_context <- function(panel) c(context_files, definitions_file(panel))
 
 group_names <- function() map_chr(world_bank$groups, "name")
 
@@ -400,10 +417,10 @@ reasoning_args <- function(effort) {
 }
 
 #' commons agent on an OpenRouter model, answering from `source` (a wdi_source()) with the trusted
-#' measures in `world_bank$measure_files` and the notes in `world_bank$context_files`. Like new_client(),
-#' failed requests become a chat message naming `label`.
+#' measures in `world_bank$measure_files` and the notes in `context` (Markdown files, agent_context()
+#' for a panel). Like new_client(), failed requests become a chat message naming `label`.
 #' @export
-new_agent <- function(model, label, source) {
+new_agent <- function(model, label, source, context = context_files) {
   # commons decides at construction whether its R session can be sandboxed; without a sandbox it
   # aborts unless the commons.allow_unsafe_fallback option is set (by config.yml or the caller)
   unsafe <- if (isTRUE(world_bank$allow_unsafe_fallback)) list(commons.allow_unsafe_fallback = TRUE) else list()
@@ -413,7 +430,7 @@ new_agent <- function(model, label, source) {
       chat_openrouter(model = model, api_args = reasoning_args(world_bank$reasoning_effort)),
       data_sources = list(wdi = source),
       semantic_layer = layer,
-      context_layer = context_layer(context_files),
+      context_layer = context_layer(context),
       instructions = agent_instructions(),
       network = "none"
     )
@@ -448,7 +465,7 @@ ground_agent <- function(agent, label) {
 prewarm_agent <- function(panel) {
   tryCatch(
     {
-      new_agent(fallback_model, fallback_model, wdi_source(panel))$prewarm()
+      new_agent(fallback_model, fallback_model, wdi_source(panel), agent_context(panel))$prewarm()
       log_info("World Bank agent context prewarmed")
     },
     error = function(e) log_warn("Could not prewarm the World Bank agent: {conditionMessage(e)}")

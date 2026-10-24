@@ -57,6 +57,16 @@ test_that("load_wdi() downloads again when an indicator's code changed in config
   expect_equal(fresh$codes[["gov_debt_pct_gdp"]], "imf:GGXWDG_NGDP")
 })
 
+test_that("load_wdi() downloads again when the cache has no indicator definitions", {
+  path <- local_tempfile(fileext = ".rds")
+  old <- split_panel(fake_wdi_raw())
+  old$definitions <- NULL
+  saveRDS(old, path)
+
+  fresh <- load_wdi(fetch = function() split_panel(fake_wdi_raw()), path = path, max_age_days = 7)
+  expect_true(is.data.frame(fresh$definitions))
+})
+
 test_that("split_panel() adds the indicators the WDI download lacks as empty columns", {
   raw <- fake_wdi_raw()
   raw$gov_debt_pct_gdp <- NULL

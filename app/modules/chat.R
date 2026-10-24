@@ -14,7 +14,7 @@ box::use(
 )
 
 box::use(
-  .. / logic / agent[new_agent, wdi_source],
+  .. / logic / agent[agent_context, new_agent, wdi_source],
   .. / logic / catalog[world_bank_greeting],
   .. / logic / config[
     app_title, chat_mode_label, disclaimer, effort_default_label, effort_label, fallback_model, fallback_model_label,
@@ -195,10 +195,11 @@ server <- function(
   })
 
   current_model <- reactiveVal(initial_model)
-  # World Bank data and its duckdb source, loaded the first time the mode is turned on and shared
-  # by every agent in this session
+  # The data, its duckdb source and the agent's context files (with the indicator definitions),
+  # made the first time Agent mode is turned on and shared by every agent in this session
   panel <- NULL
   source <- NULL
+  context <- NULL
 
   mode_models <- function(on) if (on) agent_models else models
   label_for <- function(model, on) {
@@ -213,7 +214,7 @@ server <- function(
   client_for <- function(model, on) {
     label <- function(model_id) label_for(model_id, on)
     if (on) {
-      new_agent(model, label, source)
+      new_agent(model, label, source, context)
     } else {
       new_client(model, system_prompt = system_prompt, label = label)
     }
@@ -336,6 +337,7 @@ server <- function(
             abort("no data")
           }
           source <<- wdi_source(panel)
+          context <<- agent_context(panel)
         }
         client_for(model, on)
       },

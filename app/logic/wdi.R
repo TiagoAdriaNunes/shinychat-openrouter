@@ -13,7 +13,8 @@ box::use(
 
 box::use(
   . / config[world_bank],
-  . / imf[fetch_imf],
+  . / definitions[indicator_definitions],
+  . / imf[fetch_imf, fetch_imf_metadata],
 )
 
 is_imf <- function(indicator) identical(indicator$source, "imf")
@@ -44,7 +45,8 @@ strip_labels <- function(df) {
 #' `aggregates` (World, regions, income groups, ...). WDI marks aggregates with the region
 #' "Aggregates" or leaves the region empty for groups missing from its metadata. Indicators the
 #' download lacks (the IMF ones, filled in by add_imf()) are empty columns; `codes` records each
-#' column's source and code.
+#' column's source and code, and `definitions` the indicators' official definitions (the IMF ones
+#' are added by fetch_wdi()).
 #' @export
 split_panel <- function(raw) {
   raw[setdiff(indicator_names, names(raw))] <- NA_real_
@@ -58,7 +60,7 @@ split_panel <- function(raw) {
     filter(is.na(region) | region == "Aggregates") |>
     select(aggregate = country, iso3c, year, all_of(indicator_names)) |>
     arrange(aggregate, year)
-  list(countries = countries, aggregates = aggregates, codes = indicator_sources)
+  list(countries = countries, aggregates = aggregates, codes = indicator_sources, definitions = indicator_definitions())
 }
 
 #' Fill the `name` column of the panel's countries with IMF `values` (columns iso3c, year, value,
@@ -73,9 +75,10 @@ add_imf <- function(panel, name, values) {
 }
 
 #' Download the configured indicators for every country and aggregate, uncached (about 30 seconds):
-#' the World Bank ones with WDI, the others with `fetch_imf`.
+#' the World Bank ones with WDI, the others with `fetch_imf`, and the IMF indicators' definitions
+#' with `fetch_metadata` (without them if that fails: the data matters more).
 #' @export
-fetch_wdi <- function(fetch_imf_values = fetch_imf) {
+fetch_wdi <- function(fetch_imf_values = fetch_imf, fetch_metadata = fetch_imf_metadata) {
   raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     abort("The World Bank returned no data.")
@@ -85,16 +88,24 @@ fetch_wdi <- function(fetch_imf_values = fetch_imf) {
     \(panel, i) add_imf(panel, i$name, fetch_imf_values(i$code)),
     .init = split_panel(raw)
   )
+  imf_metadata <- tryCatch(fetch_metadata(), error = function(cnd) {
+    log_warn("Could not fetch the IMF indicator definitions: {conditionMessage(cnd)}")
+    list()
+  })
+  panel$definitions <- indicator_definitions(imf_metadata)
   panel$downloaded <- Sys.Date()
   panel
 }
 
 file_age_days <- function(path) as.numeric(difftime(Sys.time(), file.mtime(path), units = "days"))
 
-# A cache saved before an indicator was added to config.yml lacks its column, and one saved before
-# an indicator's code changed has other codes, so either is downloaded again
+# A cache saved before an indicator was added to config.yml lacks its column, one saved before an
+# indicator's code changed has other codes, and one from before the definitions has none: each is
+# downloaded again
 matches_config <- function(panel) {
-  test_subset(indicator_names, names(panel$countries)) && identical(panel$codes, indicator_sources)
+  test_subset(indicator_names, names(panel$countries)) &&
+    identical(panel$codes, indicator_sources) &&
+    !test_null(panel$definitions)
 }
 
 is_fresh <- function(path, max_age_days) {
