@@ -7,7 +7,7 @@ box::use(
   jsonlite[toJSON, validate],
   logger[log_info, log_warn],
   memoise[memoise],
-  purrr[discard, list_rbind, map, map_chr, some],
+  purrr[discard, list_rbind, map, map_chr, some, walk2],
   rlang[abort, exec, list2],
   S7[`S7_data<-`, S7_inherits],
   stringr[fixed, str_c, str_detect, str_flatten_comma, str_starts, str_to_lower, str_trim],
@@ -104,21 +104,24 @@ dictionary_file <- function(panel) {
   path
 }
 
-# The panel's indicator definitions as a Markdown file for the context layer (see
-# definitions_markdown()), or none when it has none. A temporary file is enough: commons caches the
+# The panel's indicator definitions as Markdown files for the context layer, one per indicator (see
+# definitions_markdown()), or none when it has none. Temporary files are enough: commons caches the
 # context index by the documents' text.
-definitions_file <- function(panel) {
+definitions_files <- function(panel) {
   if (test_null(panel$definitions)) {
     return(NULL)
   }
-  path <- tempfile("indicator-definitions-", fileext = ".md")
-  writeLines(definitions_markdown(panel$definitions), path, useBytes = TRUE)
-  path
+  documents <- definitions_markdown(panel$definitions)
+  folder <- tempfile("indicator-definitions-")
+  dir.create(folder)
+  paths <- file.path(folder, str_c(names(documents), ".md"))
+  walk2(documents, paths, \(document, path) writeLines(document, path, useBytes = TRUE))
+  paths
 }
 
 #' The agent's context files: `world_bank$context_files` and the panel's indicator definitions.
 #' @export
-agent_context <- function(panel) c(context_files, definitions_file(panel))
+agent_context <- function(panel) c(context_files, definitions_files(panel))
 
 group_names <- function() map_chr(world_bank$groups, "name")
 
