@@ -4,7 +4,10 @@ box::use(
   DBI[dbConnect, dbDisconnect, dbWriteTable],
   duckdb[duckdb],
   htmltools[div, renderTags],
-  ellmer[AssistantTurn, chat_openrouter, ContentText, ContentToolRequest, ContentToolResult, stream_controller, tool, UserTurn],
+  ellmer[
+    AssistantTurn, chat_openrouter, ContentText, ContentThinking, ContentToolRequest, ContentToolResult, stream_controller,
+    tool, UserTurn,
+  ],
   httr2[local_mocked_responses, response_json],
   promises[promise_resolve],
   purrr[keep, map_chr],
@@ -18,7 +21,7 @@ box::use(
 )
 
 box::use(
-  app / logic / agent[agent_instructions, chart_stream, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
+  app / logic / agent[agent_instructions, chart_stream, drop_empty_reply, ground_agent, grounded_stream, groups_table, has_lookup, new_agent, check_arguments, reasoning_args, require_lookup, wdi_source],
   app / logic / config[world_bank],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
@@ -216,7 +219,8 @@ fake_agent <- function(replies) {
     agent$calls <- c(agent$calls, list(list(...)))
     chunks <- replies[[length(agent$calls)]]
     agent$turns <- c(agent$turns, list(UserTurn(list(ContentText("question")))))
-    agent$turns <- c(agent$turns, list(AssistantTurn(keep(chunks, \(chunk) !is.character(chunk)))))
+    # Only ellmer content goes in a turn (a chart is added to the stream, not to the conversation)
+    agent$turns <- c(agent$turns, list(AssistantTurn(keep(chunks, \(chunk) S7_inherits(chunk)))))
     async_generator(function() {
       for (chunk in chunks) {
         await(promise_resolve(NULL))
@@ -299,6 +303,62 @@ test_that("once data was looked up, a follow-up answered from it is shown, not d
 
   expect_equal(grounded(agent), "As found above: 2.28 trillion (2025).")
   expect_equal(length(agent$calls), 1)
+})
+
+test_that("a reply that looks the data up but writes no answer is asked once for it", {
+  result <- ContentToolResult(value = "2.28e12", request = lookup)
+  agent <- fake_agent(list(list(lookup, result), list("From the data: 2.28 trillion (2025).")))
+
+  expect_equal(grounded(agent), "From the data: 2.28 trillion (2025).")
+  expect_equal(length(agent$calls), 2)
+  expect_equal(agent$calls[[2]][[1]], world_bank$answer_nudge)
+})
+
+test_that("a model that still writes no answer gets the no-answer message, not silence", {
+  result <- ContentToolResult(value = "2.28e12", request = lookup)
+  agent <- fake_agent(list(list("Let me check. ", lookup, result), list(ContentThinking("It is 2.28 trillion."))))
+
+  expected <- str_c("Let me check. ", str_replace_all(world_bank$no_answer, fixed("{model}"), "Gemma"))
+  expect_equal(grounded(agent), expected)
+  expect_equal(length(agent$calls), 2)
+})
+
+test_that("an answer already shown isn't asked for again when the model then runs more tools", {
+  result <- ContentToolResult(value = "2.28e12", request = lookup)
+  check <- ContentToolRequest("2", "run_r", list())
+  agent <- fake_agent(list(list(lookup, result, "About 2.28 trillion (2025).", check, ContentToolResult(value = "ok"))))
+
+  expect_equal(grounded(agent), "About 2.28 trillion (2025).")
+  expect_equal(length(agent$calls), 1)
+})
+
+test_that("a chart counts as the answer, and a stopped reply isn't asked again", {
+  result <- ContentToolResult(value = "chart", request = lookup)
+  agent <- fake_agent(list(list(lookup, result, div("chart"))))
+  expect_equal(grounded(agent), "[html]")
+  expect_equal(length(agent$calls), 1)
+
+  controller <- stream_controller()
+  controller$cancel()
+  stopped <- fake_agent(list(list(lookup, result)))
+  expect_equal(grounded(stopped, controller), "")
+  expect_equal(length(stopped$calls), 1)
+})
+
+test_that("drop_empty_reply() removes a last reply without text or tool calls only", {
+  agent <- fake_agent(list())
+  question <- UserTurn(list(ContentText("GDP of Brazil?")))
+  agent$turns <- list(question, AssistantTurn(list(ContentThinking("hmm"))))
+  drop_empty_reply(agent)
+  expect_equal(length(agent$turns), 1)
+
+  agent$turns <- list(question, AssistantTurn(list(ContentText("2.28 trillion"))))
+  drop_empty_reply(agent)
+  expect_equal(length(agent$turns), 2)
+
+  agent$turns <- list(question, AssistantTurn(list(lookup)))
+  drop_empty_reply(agent)
+  expect_equal(length(agent$turns), 2)
 })
 
 test_that("reasoning_args() sends OpenRouter's reasoning effort, or nothing when it's empty", {

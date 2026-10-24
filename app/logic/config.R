@@ -37,6 +37,9 @@ effort_default_label <- settings$app$effort_default_label
 system_prompt <- settings$chat$system_prompt
 
 #' @export
+chat_response_timeout_seconds <- settings$chat$response_timeout_seconds
+
+#' @export
 fallback_model <- settings$openrouter$fallback_model
 
 #' @export
