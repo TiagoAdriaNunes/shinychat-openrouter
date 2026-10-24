@@ -361,13 +361,15 @@ default:
     context_files:
       - "app/context/world-bank.md"
       - "app/context/imf.md"
-    # A Markdown document of the official definition and source of every indicator above, made at
-    # each download from the WDI package's series metadata and the IMF's `indicators_url`, and added
-    # to the context files (app/logic/definitions.R): commons searches it like them, so questions
-    # about what an indicator measures are answered, and can be cited, from the publisher's text
+    # The official definition and source of every indicator above, made at each download from the
+    # WDI package's series metadata and the IMF's `indicators_url`, as one Markdown file per indicator
+    # added to the context files (app/logic/definitions.R): commons searches them like those, so
+    # questions about what an indicator measures are answered, and can be cited, from the publisher's
+    # text. One file each, so a search result is one whole definition (commons cuts documents into
+    # ~1,600-character pieces, which in a single file mixed neighbouring indicators).
     definitions:
-      title: "Indicator definitions"
-      intro: "The official definition and source of each indicator in the data, as published by the World Bank and the IMF."
+      # Each file's heading: "<heading>: <indicator> (`<column>`)"
+      heading: "Indicator definition"
     # commons runs the agent's R code in an OS sandbox, available on Linux and macOS only. On other
     # hosts (Windows) the agent can't start unless this is true, which uses best-effort guardrails
     # that are NOT a security boundary: only for local development (see the `development` section).

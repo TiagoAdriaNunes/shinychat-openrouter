@@ -111,6 +111,7 @@ app/
     client.R           OpenRouter client that shows a friendly message when a model fails
     wdi.R              Downloads and caches the World Bank data (WDI package) plus the IMF indicators
     imf.R              Downloads IMF indicators (DataMapper API), merged into the World Bank data
+    definitions.R      Official indicator definitions (WDI metadata, IMF), added to the agent's context search
     agent.R            commons agent for Agent mode: data source, dictionary, lookup check
   measures/world-bank.R  Trusted calculations for the agent (commons @measure functions)
   context/world-bank.md  Notes on reading the World Bank indicators (commons context layer)

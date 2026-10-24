@@ -2,8 +2,8 @@ box::use(
   checkmate[test_string],
   dplyr[filter],
   glue[glue_data],
-  purrr[discard, list_rbind, map],
-  stringr[fixed, str_c, str_flatten, str_remove, str_split_1, str_trim],
+  purrr[discard, list_rbind, map, set_names],
+  stringr[fixed, str_flatten, str_remove, str_split_1, str_trim],
   WDI[WDI_data],
 )
 
@@ -57,12 +57,14 @@ indicator_definitions <- function(imf_metadata = list()) {
     list_rbind()
 }
 
-#' The indicator definitions (indicator_definitions()) as one Markdown document for the agent's
-#' context layer: a section per indicator with a definition, under `text`'s title and intro.
+#' The indicator definitions (indicator_definitions()) as Markdown documents for the agent's context
+#' layer, one per indicator with a definition, named by its column.
 #' @export
-definitions_markdown <- function(definitions, text = world_bank$definitions) {
-  sections <- definitions |>
-    filter(!is.na(definition)) |>
-    glue_data("## {title} (`{name}`)\n\n{definition}\n\nSource: {organization}. {source} code: {code}.")
-  str_flatten(c(str_c("# ", text$title), text$intro, sections), "\n\n")
+definitions_markdown <- function(definitions, heading = world_bank$definitions$heading) {
+  defined <- filter(definitions, !is.na(definition))
+  documents <- glue_data(
+    defined,
+    "# {heading}: {title} (`{name}`)\n\n{definition}\n\nSource: {organization}. {source} code: {code}."
+  )
+  set_names(as.character(documents), defined$name)
 }
