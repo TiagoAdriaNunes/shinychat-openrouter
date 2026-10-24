@@ -18,6 +18,7 @@ box::use(
   glue[glue],
   htmltools[as.tags, div],
   htmlwidgets[JS],
+  rlang[abort],
   stringr[fixed, str_detect, str_flatten, str_flatten_comma, str_split_1, str_subset, str_to_lower, str_trim],
 )
 
@@ -44,12 +45,12 @@ chart_group_members <- function(wdi, group) {
     filter(str_to_lower(group) == wanted_group) |>
     pull(iso3c)
   if (!test_character(members, min.len = 1)) {
-    stop(
+    abort(
       glue(
         "Unknown group '{group}'. Use one of: {str_flatten_comma(unique(groups$group))}. ",
         "group is optional: send null when the question isn't about one of these groups."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   members
@@ -61,12 +62,12 @@ chart_group_members <- function(wdi, group) {
 chart_values <- function(wdi, indicator, economies, start_year, end_year, group = NULL) {
   indicators <- setdiff(dbListFields(wdi, "countries"), chart_id_columns)
   if (!test_choice(indicator, indicators)) {
-    stop(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call. = FALSE)
+    abort(glue("Unknown indicator '{indicator}'. Use one of: {str_flatten_comma(indicators)}."), call = NULL)
   }
   named <- if (test_null(economies)) character() else str_subset(str_trim(str_split_1(economies, fixed(";"))), ".")
   wanted <- c(named, chart_group_members(wdi, group))
   if (!test_character(wanted, min.len = 1)) {
-    stop("Give economies, a group, or both.", call. = FALSE)
+    abort("Give economies, a group, or both.", call = NULL)
   }
   rows <- bind_rows(
     dbReadTable(wdi, "countries") |> select(economy = country, iso3c, year, value = all_of(indicator)),
@@ -75,12 +76,12 @@ chart_values <- function(wdi, indicator, economies, start_year, end_year, group 
   known <- str_to_lower(c(rows$economy, rows$iso3c))
   if (!test_subset(str_to_lower(wanted), known)) {
     unknown <- wanted[!str_to_lower(wanted) %in% known]
-    stop(
+    abort(
       glue(
         "No World Bank economy named {str_flatten_comma(unknown)}. Use World Bank names ",
         "(e.g. 'Korea, Rep.', 'Egypt, Arab Rep.', 'Turkiye') or ISO3 codes (e.g. 'KOR')."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   first_year <- if (test_null(start_year)) -Inf else start_year
@@ -94,7 +95,7 @@ chart_values <- function(wdi, indicator, economies, start_year, end_year, group 
     ) |>
     arrange(year, economy)
   if (!test_data_frame(rows, min.rows = 1)) {
-    stop(glue("No {indicator} data for {str_flatten_comma(wanted)} in those years."), call. = FALSE)
+    abort(glue("No {indicator} data for {str_flatten_comma(wanted)} in those years."), call = NULL)
   }
   as.data.frame(rows)
 }

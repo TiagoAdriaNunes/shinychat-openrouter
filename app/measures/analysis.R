@@ -7,6 +7,7 @@ box::use(
   dplyr[all_of, arrange, desc, filter, min_rank, mutate, n, select, semi_join, slice_max],
   duckplyr[methods_overwrite],
   glue[glue],
+  rlang[abort],
   stringr[str_to_lower, str_trim],
   tidyr[pivot_longer],
 )
@@ -37,29 +38,29 @@ country_profile <- function(wdi, economy, year = NULL) {
   found <- countries |>
     filter(str_to_lower(country) == wanted | str_to_lower(iso3c) == wanted)
   if (!test_data_frame(found, min.rows = 1)) {
-    stop(
+    abort(
       glue(
         "No World Bank country named {economy}. Use a World Bank name (e.g. 'Korea, Rep.', ",
         "'Egypt, Arab Rep.', 'Turkiye') or an ISO3 code (e.g. 'KOR')."
       ),
-      call. = FALSE
+      call = NULL
     )
   }
   name <- found$country[1]
-  wanted_year <- year
 
   values <- countries |>
     pivot_longer(all_of(indicators), names_to = "indicator", values_to = "value") |>
     filter(!is.na(value))
   own <- values |>
     filter(country == name)
-  if (!test_null(wanted_year)) {
+  if (!test_null(year)) {
+    # The argument year has the name of a column: .env and .data tell them apart
     own <- own |>
-      filter(year == wanted_year)
+      filter(.data$year == .env$year)
   }
   if (!test_data_frame(own, min.rows = 1)) {
-    when <- if (test_null(wanted_year)) "" else glue(" in {wanted_year}")
-    stop(glue("No data for {name}{when}."), call. = FALSE)
+    when <- if (test_null(year)) "" else glue(" in {year}")
+    abort(glue("No data for {name}{when}."), call = NULL)
   }
   latest <- own |>
     slice_max(year, n = 1, by = indicator) |>

@@ -3,6 +3,7 @@ box::use(
   checkmate[test_null, test_string],
   logger[log_error, log_info, log_warn],
   purrr[set_names],
+  rlang[abort],
   shiny[
     getDefaultReactiveDomain, HTML, icon, invalidateLater, isolate, observe, observeEvent, reactive, reactiveVal,
     removeNotification, renderText, req, showNotification, tagList, tags, textOutput,
@@ -332,7 +333,7 @@ server <- function(
         if (on && test_null(source)) {
           panel <<- world_bank_data()
           if (test_null(panel)) {
-            stop("no data")
+            abort("no data")
           }
           source <<- wdi_source(panel)
         }

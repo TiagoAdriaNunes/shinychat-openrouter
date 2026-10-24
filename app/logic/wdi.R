@@ -6,7 +6,7 @@ box::use(
   logger[log_info, log_warn],
   memoise[forget, memoise],
   purrr[discard, keep, map_chr, reduce, set_names],
-  rlang[`:=`],
+  rlang[`:=`, abort, try_fetch],
   stringr[str_c],
   WDI[WDI],
 )
@@ -78,7 +78,7 @@ add_imf <- function(panel, name, values) {
 fetch_wdi <- function(fetch_imf_values = fetch_imf) {
   raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
   if (!is.data.frame(raw) || nrow(raw) == 0) {
-    stop("The World Bank returned no data")
+    abort("The World Bank returned no data.")
   }
   panel <- reduce(
     imf_indicators,
@@ -148,11 +148,12 @@ load_wdi <- function(
   }
   if (downloading()) {
     if (!cached) {
-      stop("The World Bank data is still downloading")
+      abort("The World Bank data is still downloading.")
     }
     return(readRDS(path))
   }
-  tryCatch(
+  # try_fetch(), not tryCatch(): an error rethrown with `parent` keeps the download's backtrace
+  try_fetch(
     {
       panel <- fetch()
       dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
@@ -163,11 +164,11 @@ load_wdi <- function(
       log_info("Downloaded World Bank data: {nrow(panel$countries)} country-years")
       panel
     },
-    error = function(e) {
+    error = function(cnd) {
       if (!cached) {
-        stop(e)
+        abort("Could not download the World Bank and IMF data, and there is no cached copy.", parent = cnd)
       }
-      log_warn("Could not refresh World Bank data, using the cached copy: {conditionMessage(e)}")
+      log_warn("Could not refresh World Bank data, using the cached copy: {conditionMessage(cnd)}")
       readRDS(path)
     }
   )
