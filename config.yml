@@ -64,8 +64,10 @@ default:
     # A reply stops (with errors.failed) when the model sends no output at all (text, thinking or tool
     # calls) for this long: a stalled provider, while a slow model that keeps working is never cut off
     idle_timeout_seconds: 90
-    # Safety limit on a whole model request (ellmer's `ellmer_timeout_s`), however steadily it streams
-    response_timeout_seconds: 900
+    # Limit on a whole model request (ellmer's `ellmer_timeout_s`), however steadily it streams. It is
+    # also the only limit while a provider hasn't started its response: R waits for it then, so the
+    # app pauses (idle_timeout_seconds can't act until the response starts). ellmer's default.
+    response_timeout_seconds: 300
     # Only models whose provider answered at least this share (%) of requests in the last 30 minutes
     # are listed (`uptime_last_30m` from <models_url>/<id>/endpoints); models with no figure are left
     # out too. If none passes, all are listed. Empty to skip the check.
