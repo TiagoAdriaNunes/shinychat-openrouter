@@ -10,7 +10,7 @@ box::use(
 )
 
 box::use(
-  . / config[error_messages],
+  . / config[chat_response_timeout_seconds, error_messages],
 )
 
 # HTTP status of a failed request, looking through wrapped (parent) conditions
@@ -42,7 +42,8 @@ error_message <- function(cnd, model) {
 # A model's control token written as text, e.g. <|tool_call_begin|> or <|im_end|>
 control_token <- "<\\|[A-Za-z_]+\\|>"
 
-# The reply text of a streamed chunk, or NULL for other content (thinking, tool calls, HTML)
+#' The reply text of a streamed chunk, or NULL for other content (thinking, tool calls, HTML)
+#' @export
 chunk_text <- function(chunk) {
   if (is.character(chunk)) {
     chunk
@@ -136,10 +137,21 @@ guard_stream <- function(client, label) {
   })
 }
 
+#' Give each request of an ellmer Chat a time limit of `seconds`, after which it fails (and
+#' safe_stream() shows errors.failed). ellmer reads its `ellmer_timeout_s` option when it builds a
+#' request, so it is set from $on_request_start(), right before: every client sets its own.
+#' @export
+set_response_timeout <- function(client, seconds) {
+  client$on_request_start(function(turns) options(ellmer_timeout_s = seconds))
+  invisible(client)
+}
+
 #' OpenRouter chat client that turns failed requests into a chat message asking to pick another model.
 #' @export
 new_client <- function(model, system_prompt, label = model) {
-  guard_stream(chat_openrouter(system_prompt = system_prompt, model = model), label)
+  client <- chat_openrouter(system_prompt = system_prompt, model = model)
+  set_response_timeout(client, chat_response_timeout_seconds)
+  guard_stream(client, label)
 }
 
 #' Send the request field `name` = `value` (an `api_args` entry) with an ellmer Chat's next requests,

@@ -1,6 +1,6 @@
 box::use(
   coro[async_generator, await, yield],
-  ellmer[AssistantTurn, ContentText, UserTurn],
+  ellmer[AssistantTurn, chat_openrouter, ContentText, UserTurn],
   httr2[local_mocked_responses, req_perform, request, response],
   promises[promise_resolve],
   rlang[error_cnd],
@@ -10,8 +10,11 @@ box::use(
 )
 
 box::use(
-  app / logic / client[error_message, format_stats, new_client, response_stats, response_turns, safe_stream, scan_text, set_reasoning_effort],
-  app / logic / config[error_messages],
+  app / logic / client[
+    error_message, format_stats, new_client, response_stats, response_turns, safe_stream, scan_text, set_reasoning_effort,
+    set_response_timeout,
+  ],
+  app / logic / config[chat_response_timeout_seconds, error_messages],
 )
 
 http_error <- function(status) {
@@ -231,4 +234,22 @@ test_that("safe_stream() stops a reply that turns into control tokens, keeping t
 
   # A "<" that isn't a token is passed on
   expect_equal(collect_stream(safe_stream(fake_stream(list("a <", " b")), "Nemotron")), "a < b")
+})
+
+test_that("each client's requests get its own time limit, set right before each one is built", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(ellmer_timeout_s = NULL)
+  seen <- NULL
+  local_mocked_responses(function(req) {
+    seen <<- c(seen, req$options$timeout_ms)
+    response(status_code = 500)
+  })
+
+  agent_like <- set_response_timeout(chat_openrouter(model = "x/y:free"), 90)
+  plain <- new_client("x/y:free", system_prompt = "Be brief.", label = "Gemma")
+  try(agent_like$chat("hi", echo = "none"), silent = TRUE)
+  reply <- collect_stream(plain$stream_async("hi"))
+
+  expect_equal(seen, c(90, chat_response_timeout_seconds) * 1000)
+  expect_equal(reply, str_c("\n\n", expected(error_messages$failed, "Gemma")))
 })
