@@ -40,12 +40,17 @@ test_that("indicator_definitions() takes an IMF indicator's description and sour
   expect_equal(debt$code, "GGXWDG_NGDP")
 })
 
-test_that("definitions_markdown() has a section per defined indicator under the configured title", {
-  text <- definitions_markdown(indicator_definitions(imf_metadata))
+test_that("definitions_markdown() makes one document per defined indicator, under the configured heading", {
+  documents <- definitions_markdown(indicator_definitions(imf_metadata))
+  heading <- world_bank$definitions$heading
 
-  expect_true(str_starts(text, fixed(str_c("# ", world_bank$definitions$title))))
-  expect_match(text, "## Inflation, consumer prices (annual %) (`inflation_pct`)", fixed = TRUE)
-  expect_match(text, "Source: World Economic Outlook (October 2026). IMF code: GGXWDG_NGDP.", fixed = TRUE)
-  # An indicator without a definition gets no section
-  expect_false(str_detect(text, fixed("`gov_net_debt_pct_gdp`")))
+  expect_true(all(str_starts(documents, fixed(str_c("# ", heading, ": ")))))
+  expect_true(str_starts(documents[["inflation_pct"]], fixed(str_c("# ", heading, ": Inflation, consumer prices"))))
+  expect_match(
+    documents[["gov_debt_pct_gdp"]],
+    "Source: World Economic Outlook (October 2026). IMF code: GGXWDG_NGDP.",
+    fixed = TRUE
+  )
+  # An indicator without a definition gets no document
+  expect_false("gov_net_debt_pct_gdp" %in% names(documents))
 })

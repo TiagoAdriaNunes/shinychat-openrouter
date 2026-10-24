@@ -395,10 +395,12 @@ test_that("latest_values() lists every configured indicator column for the model
 
 test_that("agent_context() adds the panel's indicator definitions to the context files", {
   files <- agent_context(panel)
-  expect_equal(length(files), length(world_bank$context_files) + 1)
-  definitions <- str_c(readLines(files[length(files)], encoding = "UTF-8"), collapse = "\n")
-  expect_match(definitions, world_bank$definitions$title, fixed = TRUE)
-  expect_match(definitions, "`inflation_pct`", fixed = TRUE)
+  defined <- panel$definitions$name[!is.na(panel$definitions$definition)]
+  expect_equal(length(files), length(world_bank$context_files) + length(defined))
+  # One file per indicator, so a context search returns one whole definition
+  inflation <- str_c(readLines(files[basename(files) == "inflation_pct.md"], encoding = "UTF-8"), collapse = "\n")
+  expect_match(inflation, str_c("# ", world_bank$definitions$heading, ": "), fixed = TRUE)
+  expect_match(inflation, "consumer price index", fixed = TRUE)
 
   # A panel without definitions (an old cache) keeps the configured notes only
   expect_equal(length(agent_context(list())), length(world_bank$context_files))
