@@ -1,20 +1,21 @@
 box::use(
   coro[async_generator, await, yield],
-  ellmer[AssistantTurn, chat_openrouter, ContentText, UserTurn],
+  ellmer[AssistantTurn, ContentText, UserTurn],
   httr2[local_mocked_responses, req_perform, request, response],
-  promises[promise_resolve],
+  later[later],
+  promises[promise, promise_resolve],
   rlang[error_cnd],
   stringr[fixed, str_c, str_replace_all],
-  testthat[expect_equal, expect_false, expect_null, expect_s3_class, expect_true, test_that],
+  testthat[expect_equal, expect_error, expect_false, expect_lt, expect_null, expect_s3_class, expect_true, test_that],
   withr[local_envvar, local_options],
 )
 
 box::use(
   app / logic / client[
-    error_message, format_stats, new_client, response_stats, response_turns, safe_stream, scan_text, set_reasoning_effort,
-    set_response_timeout,
+    error_message, format_stats, idle_stream, new_client, response_stats, response_turns, safe_stream, scan_text,
+    set_reasoning_effort, watch_stream,
   ],
-  app / logic / config[chat_response_timeout_seconds, error_messages],
+  app / logic / config[error_messages],
 )
 
 http_error <- function(status) {
@@ -236,20 +237,45 @@ test_that("safe_stream() stops a reply that turns into control tokens, keeping t
   expect_equal(collect_stream(safe_stream(fake_stream(list("a <", " b")), "Nemotron")), "a < b")
 })
 
-test_that("each client's requests get its own time limit, set right before each one is built", {
-  local_envvar(OPENROUTER_API_KEY = "test-key")
-  local_options(ellmer_timeout_s = NULL)
-  seen <- NULL
-  local_mocked_responses(function(req) {
-    seen <<- c(seen, req$options$timeout_ms)
-    response(status_code = 500)
+
+delay <- function(seconds) promise(function(resolve, reject) later(function() resolve(NULL), seconds))
+
+test_that("idle_stream() passes a slow reply that keeps sending through, however long it takes", {
+  slow <- async_generator(function() {
+    for (word in c("Brazil's ", "GDP ", "was ", "$2.28 trillion.")) {
+      await(delay(0.15))
+      yield(word)
+    }
+  })
+  # 0.6 s in all, but never 0.4 s without a chunk
+  expect_equal(collect_stream(idle_stream(slow(), seconds = 0.4)), "Brazil's GDP was $2.28 trillion.")
+})
+
+test_that("a reply that stalls ends with the failed message soon, and its stream is closed", {
+  closed <- FALSE
+  stalls <- async_generator(function() {
+    on.exit(closed <<- TRUE)
+    yield("Thinking... ")
+    await(delay(5))
+    yield("too late")
   })
 
-  agent_like <- set_response_timeout(chat_openrouter(model = "x/y:free"), 90)
-  plain <- new_client("x/y:free", system_prompt = "Be brief.", label = "Gemma")
-  try(agent_like$chat("hi", echo = "none"), silent = TRUE)
-  reply <- collect_stream(plain$stream_async("hi"))
+  started <- Sys.time()
+  reply <- collect_stream(safe_stream(idle_stream(stalls(), seconds = 0.3), "Gemma"))
+  expect_equal(reply, str_c("Thinking... ", "\n\n", expected(error_messages$failed, "Gemma")))
+  expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 3)
+  expect_true(closed)
+})
 
-  expect_equal(seen, c(90, chat_response_timeout_seconds) * 1000)
-  expect_equal(reply, str_c("\n\n", expected(error_messages$failed, "Gemma")))
+test_that("watch_stream() puts a client's replies through the stall check", {
+  client <- new.env()
+  client$stream_async <- function(...) {
+    async_generator(function() {
+      yield("a")
+      await(delay(5))
+      yield("b")
+    })()
+  }
+  watch_stream(client, seconds = 0.3)
+  expect_error(collect_stream(client$stream_async("hi")), class = "stream_idle")
 })

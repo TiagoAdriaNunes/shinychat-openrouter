@@ -30,9 +30,6 @@ default:
     effort_default_label: "Default"
 
   chat:
-    # Time limit of each plain chat request (ellmer's `ellmer_timeout_s`), then errors.failed. It covers
-    # the whole streamed answer, which takes minutes on slow free models.
-    response_timeout_seconds: 300
     # shinychat renders GitHub-flavored Markdown (headings, lists, tables, task lists, strikethrough,
     # footnotes, blockquotes, highlighted code blocks with a copy button). It does not render
     # LaTeX math, Mermaid diagrams or raw HTML, so the prompt steers models away from those.
@@ -64,6 +61,11 @@ default:
     # How long the fetched model list is reused before asking OpenRouter again
     models_cache_seconds: 3600
     request_timeout_seconds: 10
+    # A reply stops (with errors.failed) when the model sends no output at all (text, thinking or tool
+    # calls) for this long: a stalled provider, while a slow model that keeps working is never cut off
+    idle_timeout_seconds: 90
+    # Safety limit on a whole model request (ellmer's `ellmer_timeout_s`), however steadily it streams
+    response_timeout_seconds: 900
     # Only models whose provider answered at least this share (%) of requests in the last 30 minutes
     # are listed (`uptime_last_30m` from <models_url>/<id>/endpoints); models with no figure are left
     # out too. If none passes, all are listed. Empty to skip the check.
@@ -161,9 +163,6 @@ default:
     answer_nudge: "(You looked the data up above but didn't write an answer: answer my question from those results now, in a sentence or two.)"
     # Shown when the reply is still empty after answer_nudge. {model} is the model's name.
     no_answer: "**{model} looked the data up but didn't write an answer**, so the figures are only in the card above. Please ask again or select a different model from the dropdown below."
-    # Time limit of each model request in this mode, then errors.failed instead of a spinner that runs
-    # on when a free provider stops responding. Answers here are short.
-    response_timeout_seconds: 90
     # Indicators downloaded for every country and aggregate: `name` is the column in the agent's
     # tables, `code` the World Bank series (WDI::WDIsearch()) or, with `source: imf`, the IMF indicator.
     # `description` is shown to the agent and in the catalog, `example` is its catalog question.

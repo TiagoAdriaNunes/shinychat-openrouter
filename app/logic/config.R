@@ -37,9 +37,6 @@ effort_default_label <- settings$app$effort_default_label
 system_prompt <- settings$chat$system_prompt
 
 #' @export
-chat_response_timeout_seconds <- settings$chat$response_timeout_seconds
-
-#' @export
 fallback_model <- settings$openrouter$fallback_model
 
 #' @export
@@ -59,6 +56,12 @@ models_cache_seconds <- settings$openrouter$models_cache_seconds
 
 #' @export
 request_timeout_seconds <- settings$openrouter$request_timeout_seconds
+
+#' @export
+idle_timeout_seconds <- settings$openrouter$idle_timeout_seconds
+
+#' @export
+response_timeout_seconds <- settings$openrouter$response_timeout_seconds
 
 #' @export
 excluded_models <- as.character(unlist(settings$openrouter$excluded_models))

@@ -12,7 +12,7 @@ box::use(
 box::use(
   app / logic / checks[check_api_key, check_model],
   app / logic / agent[prewarm_agent],
-  app / logic / config[fallback_model, world_bank],
+  app / logic / config[fallback_model, response_timeout_seconds, world_bank],
   app / logic / models[free_models, reasoning_options],
   app / logic / wdi[start_wdi_download, wdi_panel],
   app / main,
@@ -25,6 +25,10 @@ log_info("Starting shinychat-openrouter app")
 # Fail fast with a clear message instead of an error inside the first chat session
 check_model(fallback_model)
 check_api_key()
+
+# Safety limit on any model request (ellmer reads it as each request is built); stalls are caught
+# much sooner by watch_stream() (app/logic/client.R)
+options(ellmer_timeout_s = response_timeout_seconds)
 
 # Fetch the model lists and effort levels now (one cached fetch shared by every session), so neither
 # the first visitor nor the first switch to Agent mode waits for them

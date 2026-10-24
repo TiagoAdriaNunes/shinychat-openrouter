@@ -1,16 +1,19 @@
 box::use(
   checkmate[test_null, test_number, test_string],
-  coro[async_generator, await_each, yield],
+  coro[async_generator, await, await_each, is_exhausted, yield],
   ellmer[AssistantPartialTurn, AssistantTurn, chat_openrouter, ContentText],
   glue[glue, glue_data],
+  later[later],
   logger[log_warn],
+  promises[finally, promise, promise_race, promise_resolve],
   purrr[keep, map_dbl],
+  rlang[error_cnd],
   S7[S7_inherits],
   stringr[fixed, str_c, str_detect, str_extract, str_flatten, str_length, str_remove, str_starts, str_sub],
 )
 
 box::use(
-  . / config[chat_response_timeout_seconds, error_messages],
+  . / config[error_messages, idle_timeout_seconds],
 )
 
 # HTTP status of a failed request, looking through wrapped (parent) conditions
@@ -140,21 +143,46 @@ guard_stream <- function(client, label) {
   })
 }
 
-#' Give each request of an ellmer Chat a time limit of `seconds`, after which it fails (and
-#' safe_stream() shows errors.failed). ellmer reads its `ellmer_timeout_s` option when it builds a
-#' request, so it is set from $on_request_start(), right before: every client sets its own.
-#' @export
-set_response_timeout <- function(client, seconds) {
-  client$on_request_start(function(turns) options(ellmer_timeout_s = seconds))
-  invisible(client)
+# The next value of the async generator `stream`, or a "stream_idle" error when none comes within
+# `seconds`. (A finished coro generator returns its exhausted marker itself, not a promise.)
+next_within <- function(stream, seconds) {
+  cancel <- function() NULL
+  timer <- promise(function(resolve, reject) {
+    idle <- error_cnd("stream_idle", message = glue("No output for {seconds} seconds"))
+    cancel <<- later(function() reject(idle), seconds)
+  })
+  finally(promise_race(promise_resolve(stream()), timer), \() cancel())
 }
 
-#' OpenRouter chat client that turns failed requests into a chat message asking to pick another model.
+#' Pass `stream` through, failing with a "stream_idle" error, and closing it, when it sends nothing
+#' for `seconds`. Every chunk counts (text, thinking, tool calls), so a slow model that keeps working
+#' is never cut off, only a stalled provider. The body ends with NULL (see safe_stream()).
+#' @export
+idle_stream <- async_generator(function(stream, seconds) {
+  on.exit(stream(close = TRUE))
+  repeat {
+    chunk <- await(next_within(stream, seconds))
+    if (is_exhausted(chunk)) {
+      break
+    }
+    yield(chunk)
+  }
+  NULL
+})
+
+#' Make an ellmer Chat's raw replies go through idle_stream(), so a stalled request ends with
+#' safe_stream()'s errors.failed message instead of a spinner that runs on. Apply it first (innermost),
+#' before wrappers that hold chunks back.
+#' @export
+watch_stream <- function(client, seconds = idle_timeout_seconds) {
+  wrap_stream(client, \(original, ...) idle_stream(original(...), seconds))
+}
+
+#' OpenRouter chat client that turns failed or stalled requests into a chat message asking to pick
+#' another model.
 #' @export
 new_client <- function(model, system_prompt, label = model) {
-  client <- chat_openrouter(system_prompt = system_prompt, model = model)
-  set_response_timeout(client, chat_response_timeout_seconds)
-  guard_stream(client, label)
+  guard_stream(watch_stream(chat_openrouter(system_prompt = system_prompt, model = model)), label)
 }
 
 #' Send the request field `name` = `value` (an `api_args` entry) with an ellmer Chat's next requests,
