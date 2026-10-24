@@ -12,7 +12,6 @@
 - Recent years are often missing for small or fragile economies.
 - Unemployment (`unemployment_pct`) is a modeled ILO estimate, available for most countries every year even where no survey was run.
 - The Gini index (`gini`) comes from household surveys run every few years, so most countries have gaps; use each country's latest survey year and say how old it is.
-- Central government debt (`gov_debt_pct_gdp`) is reported by few countries and covers central government only, not total public debt.
 - Taiwan has no World Bank data. Kosovo, West Bank and Gaza and Hong Kong SAR, China are listed separately.
 
 ## Countries, regions and groups

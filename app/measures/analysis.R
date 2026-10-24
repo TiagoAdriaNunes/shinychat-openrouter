@@ -25,7 +25,9 @@ profile_id_columns <- c("country", "iso3c", "region", "income", "year")
 #' @param economy `string` One country, as a World Bank name or ISO3 code, e.g. 'Brazil' or 'BRA'.
 #' @param year `integer` Year to profile. Default: each indicator's latest year for the country.
 #' @return One row per indicator: country, indicator, year, value, rank_highest (1 = highest value;
-#'   good for GDP and growth, bad for inflation, unemployment, debt and Gini) and countries_ranked.
+#'   good for GDP, growth and share of world GDP; bad for inflation, unemployment, every kind of debt,
+#'   interest and Gini; for gov_balance and current_account the highest is the largest surplus) and
+#'   countries_ranked.
 #' @measure
 country_profile <- function(wdi, economy, year = NULL) {
   countries <- dbReadTable(wdi, "countries")

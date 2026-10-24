@@ -6,6 +6,7 @@ box::use(
   glue[glue, glue_data],
   jsonlite[toJSON, validate],
   logger[log_info, log_warn],
+  memoise[memoise],
   purrr[discard, list_rbind, map, map_chr, some],
   rlang[list2],
   S7[`S7_data<-`, S7_inherits],
@@ -24,16 +25,25 @@ project_path <- function(paths) map_chr(paths, \(path) box::file("..", "..", pat
 measure_files <- project_path(world_bank$measure_files)
 context_files <- project_path(world_bank$context_files)
 
+# The measures (semantic layer), read once per R process and shared by every agent: reading the
+# measure files took ~0.5 s on each switch to Agent mode (~2 s the first time), and commons only
+# reads the layer
+measure_layer <- memoise(\() semantic_layer(measure_files))
+
 # Data dictionary (data-dict.yaml) describing the agent's tables, written to a temporary file
 dictionary_file <- function(panel) {
   indicator_columns <- map(world_bank$indicators, \(i) {
-    list(name = i$name, description = glue("{i$description}. World Bank series {i$code}."))
+    source <- glue("World Bank series {i$code}.")
+    if (identical(i$source, "imf")) {
+      source <- glue("IMF indicator {i$code}; countries only, empty in `aggregates`.")
+    }
+    list(name = i$name, description = glue("{i$description}. {source}"))
   })
   dictionary <- list(
-    name = "World Bank World Development Indicators",
+    name = "Economic indicators",
     description = glue(
-      "Economic indicators from the World Bank's World Development Indicators, {world_bank$start_year} onward, ",
-      "downloaded with the WDI R package on {panel$downloaded}."
+      "Economic indicators from the {str_flatten_comma(map_chr(world_bank$sources, 'name'), ' and ')}, ",
+      "{world_bank$start_year} onward, downloaded on {panel$downloaded}. Each indicator column names its source."
     ),
     details = str_c(
       "Values are missing (NULL) when the World Bank has no estimate; the latest year with data differs by ",
@@ -348,7 +358,7 @@ new_agent <- function(model, label, source) {
   # commons decides at construction whether its R session can be sandboxed; without a sandbox it
   # aborts unless the commons.allow_unsafe_fallback option is set (by config.yml or the caller)
   unsafe <- if (isTRUE(world_bank$allow_unsafe_fallback)) list(commons.allow_unsafe_fallback = TRUE) else list()
-  layer <- semantic_layer(measure_files)
+  layer <- measure_layer()
   agent <- with_options(unsafe, {
     commons(
       chat_openrouter(model = model, api_args = reasoning_args(world_bank$reasoning_effort)),

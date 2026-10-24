@@ -101,18 +101,24 @@ wdi_economy_values <- function(wdi, indicator, economies, group = NULL) {
   rows
 }
 
-#' Latest value of a World Bank indicator for a country
+#' Latest value of an indicator for a country
 #'
 #' Use for "what is", "how much", "how big" or "current" questions about one or more countries or
 #' regions, e.g. "What is Brazil's GDP?", "Population of India", "Inflation in Argentina now".
-#' Returns the most recent available value and its year, for any indicator in the data: GDP (gross
-#' domestic product, size of the economy), GDP growth, GDP per capita (income per person), GDP per
-#' capita PPP, inflation (consumer prices), unemployment, population, trade, exports, foreign direct
-#' investment (FDI), government debt and the Gini index (inequality).
+#' Returns the most recent available value and its year, for any indicator in the World Bank and IMF
+#' data: GDP (gross domestic product, size of the economy), GDP growth, GDP per capita (income per
+#' person), GDP per capita PPP, share of world GDP, inflation (consumer prices), unemployment,
+#' population, trade, exports, foreign direct investment (FDI), current account balance, government
+#' debt, net debt, budget deficit or surplus, interest on public debt, private, household and
+#' corporate debt, and the Gini index (inequality).
 #'
 #' @param indicator `string` Indicator column: gdp_usd (GDP, current US$), gdp_growth_pct (real GDP
-#'   growth, %), gdp_per_capita_usd, gdp_per_capita_ppp, inflation_pct, unemployment_pct, population,
-#'   trade_pct_gdp, exports_pct_gdp, fdi_inflows_pct_gdp, gov_debt_pct_gdp, gini.
+#'   growth, %), gdp_constant_usd (real GDP, constant 2015 US$), gdp_per_capita_usd,
+#'   gdp_per_capita_ppp, world_gdp_share_ppp_pct, inflation_pct,
+#'   unemployment_pct, population, trade_pct_gdp, exports_pct_gdp, fdi_inflows_pct_gdp,
+#'   current_account_pct_gdp, gov_debt_pct_gdp, gov_net_debt_pct_gdp, gov_balance_pct_gdp (budget
+#'   surplus + or deficit -), gov_interest_pct_gdp, private_debt_pct_gdp, household_debt_pct_gdp,
+#'   corporate_debt_pct_gdp, gini.
 #' @param economies `string` Countries or aggregates separated by semicolons, as World Bank names or
 #'   ISO3 codes, e.g. 'Brazil; Korea, Rep.; World; Euro area; High income' or 'BRA; KOR; WLD'.
 #' @param group `string` Also include every member country of a group in the `groups` table, e.g.
@@ -124,13 +130,14 @@ latest_values <- function(wdi, indicator, economies = NULL, group = NULL) {
     slice_max(year, n = 1, by = economy)
 }
 
-#' Yearly values of a World Bank indicator over time
+#' Yearly values of an indicator over time
 #'
 #' Use for trends, history and "how has it changed" questions, e.g. "Brazil's GDP since 2010",
 #' "Inflation in Turkey over the last decade", "Compare unemployment in Spain and Italy over time".
 #' Returns one value per year for countries or regions, for any indicator in the data: GDP, GDP
-#' growth, GDP per capita, PPP, inflation, unemployment, population, trade, exports, FDI, government
-#' debt and the Gini index (inequality).
+#' growth, GDP per capita, PPP, share of world GDP, inflation, unemployment, population, trade,
+#' exports, FDI, current account, government debt, net debt, budget deficit, interest, private,
+#' household and corporate debt, and the Gini index (inequality).
 #'
 #' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, inflation_pct, population
 #'   (same columns as latest_values).
@@ -149,15 +156,18 @@ indicator_series <- function(wdi, indicator, economies = NULL, start_year = NULL
     filter(year >= first_year, year <= last_year)
 }
 
-#' Countries ranked by a World Bank indicator
+#' Countries ranked by an indicator
 #'
 #' Use for "top", "largest", "highest", "lowest", "richest", "poorest" or "which countries"
 #' questions, e.g. "Largest economies by GDP", "Highest inflation in Africa", "Poorest countries
 #' by GDP per capita", "Top euro countries by GDP", "Biggest economies in the EU". Ranks countries
 #' (not aggregates) in one year, optionally within one World Bank region or a country group (euro
 #' area / eurozone, European Union / EU, Mercosur, BRICS, ASEAN, G7, G20, OECD...), for any
-#' indicator: GDP, GDP growth, GDP per capita, PPP, inflation, unemployment, population, trade,
-#' exports, FDI, government debt or the Gini index (inequality). Without a year, uses the latest year
+#' indicator: GDP, GDP growth, GDP per capita, PPP, share of world GDP, inflation, unemployment,
+#' population, trade, exports, FDI, current account, government debt, net debt, budget deficit or
+#' surplus, interest, private, household or corporate debt, or the Gini index (inequality). For the
+#' largest deficits rank gov_balance_pct_gdp or current_account_pct_gdp with lowest_first (deficits
+#' are negative). Without a year, uses the latest year
 #' reported by at least half as many countries as the best-covered year, so a ranking isn't based on
 #' the few early reporters.
 #'
@@ -224,7 +234,7 @@ indicator_ranking <- function(
     slice_head(n = top_n)
 }
 
-#' Total and average annual growth of a World Bank indicator between two years
+#' Total and average annual growth of an indicator between two years
 #'
 #' Use for "how much did it grow", "which countries grew the most / fastest since", "growth from
 #' 2020 to now" and "average annual growth between two years" questions, e.g. "How fast did China's

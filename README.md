@@ -6,7 +6,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 
 - Streaming chat UI with a stop button, greeting and light/dark mode (Bootstrap 5 via `bslib`).
 - Model picker below the chat listing OpenRouter's [free models](https://openrouter.ai/collections/free-models), fetched live (cached for an hour) and ordered by Artificial Analysis intelligence index, most intelligent first. The chat starts with the top model; switching keeps the conversation. The `openrouter/free` router is used only if the list can't be fetched (it picks any free model at random, including non-chat ones).
-- **World Bank data mode**: a "World Bank data" tab under the message box (next to "Chat") turns the chat into a [commons](https://posit-dev.github.io/commons/r/) data agent that answers from World Development Indicators (GDP, growth, inflation, unemployment, population, trade, debt, Gini; every country and aggregate since 1990) downloaded with [`WDI`](https://vincentarelbundock.github.io/WDI/). The agent uses trusted measures (latest values, time series, rankings, compound growth) where it can, otherwise writes SQL or R, and marks each answer as trusted, cited or untrusted. Only free models that support tool calling are listed in this mode, and switching mode starts a new conversation. Answers are only shown if the model actually looked the data up: an answer from memory is dropped and the question asked again, and if the model still doesn't look anything up, the app says so and suggests another model instead of showing made-up figures.
+- **Agent mode**: an "Agent mode" tab under the message box (next to "Chat"; the opening greeting explains the difference) turns the chat into a [commons](https://posit-dev.github.io/commons/r/) data agent that answers from World Development Indicators (GDP, growth, inflation, unemployment, population, trade, Gini; every country and aggregate since 1990) downloaded with [`WDI`](https://vincentarelbundock.github.io/WDI/), plus IMF indicators from the [IMF DataMapper](https://www.imf.org/external/datamapper): government gross and net debt, budget balance, interest on public debt, current account, share of world GDP, and private, household and corporate debt. The agent uses trusted measures (latest values, time series, rankings, compound growth) where it can, otherwise writes SQL or R, and marks each answer as trusted, cited or untrusted. Only free models that support tool calling are listed in this mode, and switching mode starts a new conversation. Answers are only shown if the model actually looked the data up: an answer from memory is dropped and the question asked again, and if the model still doesn't look anything up, the app says so and suggests another model instead of showing made-up figures.
 - Modular code using [`box`](https://klmr.me/box/) for imports (no `library()` calls).
 - Reproducible environment with `renv`.
 - Logging with `logger` and clear startup errors with `cli`/`rlang`.
@@ -33,7 +33,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 
    `.Renviron` is git-ignored. Never commit your key.
 
-3. **Windows only**, to use World Bank data mode locally: add `R_CONFIG_ACTIVE=development` to the same `.Renviron`. commons runs the agent's R code in an OS sandbox that exists only on Linux and macOS; the `development` section of `config.yml` lets it fall back to best-effort guardrails, which are not a security boundary. Never set it on a deployed app.
+3. **Windows only**, to use Agent mode locally: add `R_CONFIG_ACTIVE=development` to the same `.Renviron`. commons runs the agent's R code in an OS sandbox that exists only on Linux and macOS; the `development` section of `config.yml` lets it fall back to best-effort guardrails, which are not a security boundary. Never set it on a deployed app.
 
 ## Run
 
@@ -41,7 +41,7 @@ A small chatbot built with R Shiny, [shinychat](https://posit-dev.github.io/shin
 shiny::runApp()
 ```
 
-The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid. It also loads the World Bank data from `cache/wdi.rds`, which is reused for a week. When that file is missing or older, the app starts right away and downloads it in the background (about 30 seconds); World Bank data mode shows a loading message until it is ready.
+The app checks the configuration at startup and stops with a clear message if `OPENROUTER_API_KEY` is missing or the model setting is invalid. It also loads the World Bank and IMF data from `cache/wdi.rds`, which is reused for a week. When that file is missing or older, the app starts right away and downloads it in the background (about 30 seconds); Agent mode shows a loading message until it is ready.
 
 ## Test
 
@@ -49,7 +49,7 @@ The app checks the configuration at startup and stops with a clear message if `O
 Rscript tests/testthat.R
 ```
 
-Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()` and the World Bank data with a small fake panel, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
+Tests use `testthat` and mock every OpenRouter request with `httr2::local_mocked_responses()` and the World Bank and IMF data with small fakes, so they run offline and need no API key. GitHub Actions runs them on every push to `main` and on pull requests (`.github/workflows/tests.yml`).
 
 ## Format and lint
 
@@ -81,7 +81,7 @@ All app settings live in [`config.yml`](config.yml), read with the [`config`](ht
 | Title, greeting, input placeholder, disclaimer | `app` |
 | System prompt | `chat` |
 | Default model, model list URL, cache duration, request timeout, models hidden from the dropdown | `openrouter` |
-| World Bank data mode: indicators, start year, data cache, agent instructions, messages | `world_bank` |
+| Agent mode: data sources, indicators, start year, IMF API, data cache, agent instructions, messages | `world_bank` |
 | Messages shown when a model is rate limited, unavailable or fails | `errors` |
 | Colors and chat styling (any bslib theme variable) | `theme` |
 
@@ -109,10 +109,12 @@ app/
     config.R           Reads config.yml and exports the settings
     models.R           Fetches and caches the free model list (optionally only tool-calling models)
     client.R           OpenRouter client that shows a friendly message when a model fails
-    wdi.R              Downloads and caches the World Bank data (WDI package)
-    agent.R            commons agent for World Bank data mode: data source, dictionary, lookup check
+    wdi.R              Downloads and caches the World Bank data (WDI package) plus the IMF indicators
+    imf.R              Downloads IMF indicators (DataMapper API), merged into the World Bank data
+    agent.R            commons agent for Agent mode: data source, dictionary, lookup check
   measures/world-bank.R  Trusted calculations for the agent (commons @measure functions)
-  context/world-bank.md  Notes on reading the indicators (commons context layer)
+  context/world-bank.md  Notes on reading the World Bank indicators (commons context layer)
+  context/imf.md         Notes on reading the IMF indicators (commons context layer)
     theme.R            commons_theme() (page_chat_theme() + commons assets) from the config.yml theme section
     checks.R           Startup validation (cli::cli_abort)
 tests/                 testthat suite (run with Rscript tests/testthat.R)
@@ -136,7 +138,7 @@ flyctl deploy --ha=false
 - `--ha=false` keeps a single machine, which Shiny needs because each session is tied to one machine.
 - `fly.toml` uses a `shared-cpu-2x` machine (2 shared CPUs) with 2 GB of RAM in `gru` (São Paulo) that stops when idle and starts again on the next visit. Change `primary_region`, the `[[vm]]` block or `min_machines_running` to suit you.
 - The first build takes a few minutes while the R packages are installed. The build also downloads the World Bank data into the image, so a cold machine doesn't wait for it.
-- World Bank data mode needs the commons OS sandbox (seccomp plus Landlock or user namespaces), which a modern Linux kernel such as Fly.io's provides. If it isn't available, the mode shows "unavailable" and the log says why.
+- Agent mode needs the commons OS sandbox (seccomp plus Landlock or user namespaces), which a modern Linux kernel such as Fly.io's provides. If it isn't available, the mode shows "unavailable" and the log says why.
 
 ## Notes
 

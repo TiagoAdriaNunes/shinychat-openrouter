@@ -128,15 +128,16 @@ chart_formats <- function(percent) {
   }
 }
 
-#' Line chart of a World Bank indicator over the years
+#' Line chart of an indicator over the years
 #'
 #' Use whenever the user asks for a chart, plot, graph, line chart, figure or visualization, or to
 #' draw, show or visualize a trend over time, e.g. "Plot inflation in Brazil over the years", "Chart
 #' GDP of India and China since 2000", "Graph unemployment in Spain", "Plot GDP growth for the G7
 #' countries". Shows the user an interactive line chart with one line per country or region, or per
 #' member of a group (euro area / eurozone, EU, Mercosur, BRICS, G7...), for any indicator: GDP, GDP growth,
-#' GDP per capita, PPP, inflation, unemployment, population, trade, exports, FDI, government debt and
-#' the Gini index (inequality).
+#' GDP per capita, PPP, share of world GDP, inflation, unemployment, population, trade, exports, FDI,
+#' current account, government debt, net debt, budget deficit, interest, private, household and
+#' corporate debt, and the Gini index (inequality).
 #'
 #' @param indicator `string` Indicator column, e.g. gdp_usd, gdp_growth_pct, inflation_pct, population
 #'   (same columns as latest_values).
