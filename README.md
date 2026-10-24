@@ -107,17 +107,23 @@ app/
   modules/chat.R       Chat module (page_chat + chat_openrouter + chat_server)
   logic/
     config.R           Reads config.yml and exports the settings
-    models.R           Fetches and caches the free model list (optionally only tool-calling models)
+    models.R           Fetches and caches the free model lists and effort levels (one catalogue fetch)
     client.R           OpenRouter client that shows a friendly message when a model fails
+    indicators.R       Which source each configured indicator comes from
     wdi.R              Downloads and caches the World Bank data (WDI package) plus the IMF indicators
     imf.R              Downloads IMF indicators (DataMapper API), merged into the World Bank data
     definitions.R      Official indicator definitions (WDI metadata, IMF), added to the agent's context search
-    agent.R            commons agent for Agent mode: data source, dictionary, lookup check
-  measures/world-bank.R  Trusted calculations for the agent (commons @measure functions)
-  context/world-bank.md  Notes on reading the World Bank indicators (commons context layer)
-  context/imf.md         Notes on reading the IMF indicators (commons context layer)
+    agent.R            Builds the commons agent for Agent mode
+    dictionary.R       The agent's data source and data dictionary
+    tools.R            Adjustments to the agent's tools for free models
+    grounding.R        Reply wrappers: answers only from looked-up data, charts in the reply
+    catalog.R          Agent mode's greeting catalog
     theme.R            commons_theme() (page_chat_theme() + commons assets) from the config.yml theme section
     checks.R           Startup validation (cli::cli_abort)
+  measures/world-bank.R  Trusted calculations and the chart for the agent (commons @measure functions)
+  measures/analysis.R    Country profile measure
+  context/world-bank.md  Notes on reading the World Bank indicators (commons context layer)
+  context/imf.md         Notes on reading the IMF indicators (commons context layer)
 tests/                 testthat suite (run with Rscript tests/testthat.R)
 .github/workflows/     CI: runs the tests on every push and pull request
 renv.lock              Locked package versions

@@ -137,23 +137,40 @@ pick_models <- function(free, uptime, tools_only) {
   ids[order(ids %in% low_priority_models, -score, -created)]
 }
 
-#' Fetch free text models from OpenRouter, uncached: `list(all =, tools =)`, the model lists for
-#' plain chat and for Agent mode (only models supporting tool calling), picked from one catalogue
-#' and one round of uptime lookups. Errors if the request fails or no free text models are found.
-#' @export
-fetch_free_models <- function() {
-  models <- get_json(models_url)
-  free <- keep(models$data, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
-  free <- keep_usable(free)
-  if (length(free) == 0) {
-    abort("No free text models in the response.")
+# Reasoning effort levels the model offers (OpenRouter's `reasoning.supported_efforts`, highest first)
+# and its default effort, or NULL when it has no effort selection. "none" is left out when the model
+# always reasons (`mandatory`), since it rejects that effort.
+model_reasoning <- function(model) {
+  reasoning <- model$reasoning
+  efforts <- as.character(unlist(reasoning$supported_efforts))
+  if (isTRUE(reasoning$mandatory)) {
+    efforts <- setdiff(efforts, "none")
   }
-  uptime <- if (test_number(min_uptime_30m)) uptimes_30m(map_chr(free, "id")) else NULL
-  list(all = pick_models(free, uptime, tools_only = FALSE), tools = pick_models(free, uptime, tools_only = TRUE))
+  if (length(efforts) == 0) {
+    return(NULL)
+  }
+  default <- reasoning$default_effort
+  list(efforts = efforts, default = if (test_string(default) && default %in% efforts) default else efforts[[1]])
 }
 
-# Shared by all sessions in this R process, and by both model lists. memoise only stores returned
-# values, so a failed fetch is retried on the next call instead of being cached.
+#' Fetch OpenRouter's model catalogue once, uncached, and pick from it `all` (the free text models
+#' for plain chat), `tools` (those supporting tool calling, for Agent mode) and `efforts` (every
+#' model's reasoning effort options by id, see model_reasoning()). Errors if the request fails.
+#' @export
+fetch_free_models <- function() {
+  models <- get_json(models_url)$data
+  free <- keep(models, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
+  free <- keep_usable(free)
+  uptime <- if (test_number(min_uptime_30m) && length(free) > 0) uptimes_30m(map_chr(free, "id"))
+  list(
+    all = pick_models(free, uptime, tools_only = FALSE),
+    tools = pick_models(free, uptime, tools_only = TRUE),
+    efforts = compact(set_names(map(models, model_reasoning), map_chr(models, "id")))
+  )
+}
+
+# Shared by all sessions in this R process, and by the model lists and effort options. memoise only
+# stores returned values, so a failed fetch is retried on the next call instead of being cached.
 cached_fetch <- memoise(fetch_free_models, cache = cache_mem(max_age = models_cache_seconds))
 
 #' Free text models on OpenRouter as a named character vector (name = label, value = id),
@@ -178,22 +195,6 @@ free_models <- function(fetch = cached_fetch, tools_only = FALSE) {
   )
 }
 
-# Reasoning effort levels the model offers (OpenRouter's `reasoning.supported_efforts`, highest first)
-# and its default effort, or NULL when it has no effort selection. "none" is left out when the model
-# always reasons (`mandatory`), since it rejects that effort.
-model_reasoning <- function(model) {
-  reasoning <- model$reasoning
-  efforts <- as.character(unlist(reasoning$supported_efforts))
-  if (isTRUE(reasoning$mandatory)) {
-    efforts <- setdiff(efforts, "none")
-  }
-  if (length(efforts) == 0) {
-    return(NULL)
-  }
-  default <- reasoning$default_effort
-  list(efforts = efforts, default = if (test_string(default) && default %in% efforts) default else efforts[[1]])
-}
-
 # OpenRouter's effort levels, highest first
 effort_levels <- c("max", "xhigh", "high", "medium", "low", "minimal", "none")
 
@@ -205,21 +206,11 @@ nearest_effort <- function(effort, efforts) {
   efforts[[which.min(distance)]]
 }
 
-#' Reasoning effort options of every OpenRouter model that has them, uncached: a list named by model
-#' id of `list(efforts =, default =)` (see model_reasoning()). Errors if the request fails.
+#' Reasoning effort options by model id (`efforts` of fetch_free_models(), from the same cached
+#' fetch as free_models()); an empty list if they can't be fetched, so every model keeps its default.
 #' @export
-fetch_reasoning_options <- function() {
-  models <- get_json(models_url)$data
-  compact(set_names(map(models, model_reasoning), map_chr(models, "id")))
-}
-
-cached_reasoning <- memoise(fetch_reasoning_options, cache = cache_mem(max_age = models_cache_seconds))
-
-#' Reasoning effort options by model id (see fetch_reasoning_options()), cached like free_models();
-#' an empty list if they can't be fetched, so every model keeps its default effort.
-#' @export
-reasoning_options <- function(fetch = cached_reasoning) {
-  tryCatch(fetch(), error = function(e) {
+reasoning_options <- function(fetch = cached_fetch) {
+  tryCatch(fetch()$efforts, error = function(e) {
     log_warn("Could not fetch OpenRouter reasoning options: {conditionMessage(e)}")
     list()
   })

@@ -26,15 +26,14 @@ log_info("Starting shinychat-openrouter app")
 check_model(fallback_model)
 check_api_key()
 
-# Fetch the model lists (chat and Agent mode) and effort levels now; every session reuses them for
-# models_cache_seconds, so neither the first visitor nor the first switch to Agent mode waits for them
+# Fetch the model lists and effort levels now (one cached fetch shared by every session), so neither
+# the first visitor nor the first switch to Agent mode waits for them
 invisible(free_models())
 invisible(reasoning_options())
 
-# Load the World Bank data from the disk cache and build the agent's context index now, so turning
-# on Agent mode and the first question are quick. A missing or old cache is downloaded
-# (~30 s) in the background instead of delaying the start: an old copy is used meanwhile, and with
-# no copy World Bank data mode shows that it is downloading and turns on when it is done.
+# Load the data and build the agent's context index now, so Agent mode opens quickly. A missing or
+# old cache is downloaded in the background (~30 s): an old copy is used meanwhile, or Agent mode
+# waits for it with a loading message.
 options(commons.context_cache = world_bank$context_cache)
 start_wdi_download()
 panel <- wdi_panel()

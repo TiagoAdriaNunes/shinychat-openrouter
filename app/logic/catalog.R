@@ -1,12 +1,13 @@
 box::use(
   glue[glue],
   htmltools[htmlEscape],
-  purrr[keep, map_chr],
+  purrr[map_chr],
   stringr[fixed, str_c, str_flatten, str_flatten_comma, str_replace_all, str_trim],
 )
 
 box::use(
   . / config[world_bank],
+  . / indicators[indicator_source],
 )
 
 # A shinychat suggestion: clicking it fills the message box with its text
@@ -19,14 +20,6 @@ table_cell <- function(text) str_replace_all(text, fixed("|"), "\\|")
 collapsible <- function(summary, count, body) {
   template <- "<details>\n<summary><strong>{htmlEscape(summary)}</strong> ({count})</summary>\n\n{body}\n\n</details>"
   as.character(glue(template, .trim = FALSE))
-}
-
-#' The source (an entry of `sources`) an indicator comes from: its `source` id, World Bank (`wdi`)
-#' without one.
-#' @export
-indicator_source <- function(indicator, sources = world_bank$sources) {
-  id <- indicator$source %||% "wdi"
-  keep(sources, \(s) identical(s$id, id))[[1]]
 }
 
 #' The Agent mode catalog as Markdown: an example question for each kind of question, then
