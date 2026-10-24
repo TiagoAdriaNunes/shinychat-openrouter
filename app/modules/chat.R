@@ -31,7 +31,7 @@ external_link <- function(href, ...) {
 
 mode_input_id <- function(id) str_c(id, "_mode")
 
-# "Chat" / "World Bank data" pills under the message box: a Shiny radio input (value "chat" or
+# "Chat" / "Agent mode" pills under the message box: a Shiny radio input (value "chat" or
 # "world_bank") drawn as Bootstrap toggle buttons, so the mode is visible where people type
 mode_tabs <- function(id) {
   input_id <- mode_input_id(id)

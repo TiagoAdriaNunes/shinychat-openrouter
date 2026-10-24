@@ -4,18 +4,32 @@ box::use(
   checkmate[test_file_exists, test_null, test_subset],
   logger[log_info, log_warn],
   memoise[forget, memoise],
-  purrr[map, map_chr, set_names],
+  purrr[discard, keep, map, map_chr, reduce, set_names],
   stringr[str_c],
   WDI[WDI],
 )
 
 box::use(
   . / config[world_bank],
+  . / imf[fetch_imf],
 )
 
-#' World Bank series codes to download, named by their column name in the agent's tables.
+is_imf <- function(indicator) identical(indicator$source, "imf")
+imf_indicators <- keep(world_bank$indicators, is_imf)
+wdi_indicators <- discard(world_bank$indicators, is_imf)
+
+#' World Bank series codes to download with WDI, named by their column name in the agent's tables
+#' (the indicators with `source: imf` come from fetch_imf()).
 #' @export
-indicator_codes <- set_names(map_chr(world_bank$indicators, "code"), map_chr(world_bank$indicators, "name"))
+indicator_codes <- set_names(map_chr(wdi_indicators, "code"), map_chr(wdi_indicators, "name"))
+
+# Every indicator column, in config.yml order, with its source and code: saved with the data, so a
+# cache made before a code changed in config.yml is downloaded again
+indicator_names <- map_chr(world_bank$indicators, "name")
+indicator_sources <- set_names(
+  map_chr(world_bank$indicators, \(i) str_c(if (is_imf(i)) "imf" else "wdi", ":", i$code)),
+  indicator_names
+)
 
 country_columns <- c("country", "iso3c", "region", "income", "year")
 aggregate_columns <- c("aggregate", "iso3c", "year")
@@ -31,14 +45,18 @@ strip_labels <- function(df) {
 
 #' Split a WDI(extra = TRUE) download into `countries` (one row per economy and year) and
 #' `aggregates` (World, regions, income groups, ...). WDI marks aggregates with the region
-#' "Aggregates" or leaves the region empty for groups missing from its metadata.
+#' "Aggregates" or leaves the region empty for groups missing from its metadata. Indicators the
+#' download lacks (the IMF ones, filled in by add_imf()) are empty columns; `codes` records each
+#' column's source and code.
 #' @export
 split_panel <- function(raw) {
-  indicators <- names(indicator_codes)
+  for (name in setdiff(indicator_names, names(raw))) {
+    raw[[name]] <- NA_real_
+  }
   is_country <- !is.na(raw$region) & raw$region != "Aggregates"
 
-  countries <- raw[is_country, c(country_columns, indicators)]
-  aggregates <- raw[!is_country, c("country", "iso3c", "year", indicators)]
+  countries <- raw[is_country, c(country_columns, indicator_names)]
+  aggregates <- raw[!is_country, c("country", "iso3c", "year", indicator_names)]
   names(aggregates)[1] <- "aggregate"
 
   tidy <- function(df, by) {
@@ -46,28 +64,45 @@ split_panel <- function(raw) {
     rownames(df) <- NULL
     df
   }
-  list(countries = tidy(countries, "country"), aggregates = tidy(aggregates, "aggregate"))
+  list(countries = tidy(countries, "country"), aggregates = tidy(aggregates, "aggregate"), codes = indicator_sources)
 }
 
-#' Download the configured indicators for every country and aggregate, uncached (about 30 seconds).
+#' Fill the `name` column of the panel's countries with IMF `values` (columns iso3c, year, value,
+#' from fetch_imf()). Aggregates stay empty: the IMF's country groups aren't the World Bank's.
 #' @export
-fetch_wdi <- function() {
+add_imf <- function(panel, name, values) {
+  found <- match(str_c(panel$countries$iso3c, "-", panel$countries$year), str_c(values$iso3c, "-", values$year))
+  panel$countries[[name]] <- values$value[found]
+  panel
+}
+
+#' Download the configured indicators for every country and aggregate, uncached (about 30 seconds):
+#' the World Bank ones with WDI, the others with `fetch_imf`.
+#' @export
+fetch_wdi <- function(fetch_imf_values = fetch_imf) {
   raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     stop("The World Bank returned no data")
   }
-  panel <- split_panel(raw)
+  panel <- reduce(
+    imf_indicators,
+    \(panel, i) add_imf(panel, i$name, fetch_imf_values(i$code)),
+    .init = split_panel(raw)
+  )
   panel$downloaded <- Sys.Date()
   panel
 }
 
 file_age_days <- function(path) as.numeric(difftime(Sys.time(), file.mtime(path), units = "days"))
 
-# A cache saved before an indicator was added to config.yml lacks its column, so it is downloaded again
-has_indicators <- function(panel) test_subset(names(indicator_codes), names(panel$countries))
+# A cache saved before an indicator was added to config.yml lacks its column, and one saved before
+# an indicator's code changed has other codes, so either is downloaded again
+matches_config <- function(panel) {
+  test_subset(indicator_names, names(panel$countries)) && identical(panel$codes, indicator_sources)
+}
 
 is_fresh <- function(path, max_age_days) {
-  test_file_exists(path) && file_age_days(path) < max_age_days && has_indicators(readRDS(path))
+  test_file_exists(path) && file_age_days(path) < max_age_days && matches_config(readRDS(path))
 }
 
 # The background download started by start_wdi_download(), if any (one per R process)
