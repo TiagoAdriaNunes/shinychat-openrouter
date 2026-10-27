@@ -21,6 +21,9 @@ box::use(
 is_tool_request <- function(chunk) S7_inherits(chunk, ContentToolRequest)
 is_thinking <- function(chunk) S7_inherits(chunk, ContentThinking)
 
+# A call to one of `data_tools`, the tools that read the data (a search for measures or notes doesn't)
+is_data_request <- function(chunk, data_tools) is_tool_request(chunk) && chunk@name %in% data_tools
+
 # Log the tools an agent calls: names only, never content
 log_tool_call <- function(chunk, model) {
   if (is_tool_request(chunk)) {
@@ -37,30 +40,37 @@ split_args <- function(args) {
   list(inputs = args[named == ""], options = args[named != ""])
 }
 
-#' TRUE if `turns` contain a successful tool result: data already looked up in this conversation.
+#' TRUE if `turns` contain a successful result of one of `data_tools` (the tools that read the data):
+#' data already looked up in this conversation. A search for measures or notes doesn't count.
 #' @export
-has_lookup <- function(turns) {
+has_lookup <- function(turns, data_tools) {
   some(turns, function(turn) {
-    some(turn@contents, \(content) S7_inherits(content, ContentToolResult) && test_null(content@error))
+    some(turn@contents, function(content) {
+      S7_inherits(content, ContentToolResult) &&
+        test_null(content@error) &&
+        is_data_request(content@request, data_tools)
+    })
   })
 }
 
 #' Make the first request for each new question require a tool call (`tool_choice = "required"`), so
 #' the model looks the data up instead of answering from memory. Later requests in the tool loop, and
-#' questions in a conversation that already holds a lookup, go without it so the model can answer.
-#' Set from $on_request_start(), which runs before each request is built.
+#' questions in a conversation that already holds a lookup (has_lookup() with `data_tools`), go
+#' without it so the model can answer. Set from $on_request_start(), which runs before each request
+#' is built.
 #' @export
-require_lookup <- function(agent) {
+require_lookup <- function(agent, data_tools) {
   agent$on_request_start(function(turns) {
     question <- !some(turns[[length(turns)]]@contents, \(content) S7_inherits(content, ContentToolResult))
-    set_api_arg(agent, "tool_choice", if (question && !has_lookup(turns)) "required")
+    set_api_arg(agent, "tool_choice", if (question && !has_lookup(turns, data_tools)) "required")
   })
   invisible(agent)
 }
 
 #' Stream an agent reply only if it looks the data up:
-#' 1. The reply's text is held back until the model makes a real tool call (thinking still streams).
-#' 2. A reply that ends without a tool call is dropped (the turns are restored) and the question asked
+#' 1. The reply's text is held back until the model calls one of `data_tools`, the tools that read the
+#'    data (thinking still streams; a search for measures or notes isn't a lookup).
+#' 2. A reply that ends without calling one is dropped (the turns are restored) and the question asked
 #'    again with `world_bank$lookup_nudge`; if the retry also skips the data, `world_bank$no_lookup` is
 #'    shown instead.
 #' 3. A reply that looked the data up but wrote no answer is asked once with `world_bank$answer_nudge`,
@@ -69,10 +79,10 @@ require_lookup <- function(agent) {
 #' be answered from it. A stopped reply isn't retried; a failed request errors out to safe_stream().
 #' `original` is the agent's own stream_async(), `args` its arguments, `model` the name for messages.
 #' @export
-grounded_stream <- async_generator(function(original, agent, args, model) {
+grounded_stream <- async_generator(function(original, agent, args, model, data_tools) {
   args <- split_args(args)
   before <- agent$get_turns()
-  earlier <- has_lookup(before)
+  earlier <- has_lookup(before, data_tools)
   answered <- FALSE
   cancelled <- FALSE
   if (earlier) {
@@ -96,7 +106,7 @@ grounded_stream <- async_generator(function(original, agent, args, model) {
       answered <- FALSE
       for (chunk in await_each(exec(original, !!!inputs, !!!args$options))) {
         log_tool_call(chunk, model)
-        if (!looked_up && is_tool_request(chunk)) {
+        if (!looked_up && is_data_request(chunk, data_tools)) {
           looked_up <- TRUE
           for (text in held) {
             yield(text)
@@ -182,13 +192,14 @@ show_charts <- function(agent) {
 }
 
 #' Make `agent$stream_async()` go through grounded_stream(). `label` is the model name for messages,
-#' or a function of the model id (see guard_stream()).
+#' or a function of the model id (see guard_stream()); `data_tools` the names of the tools that read
+#' the data.
 #' @export
-ground_agent <- function(agent, label) {
+ground_agent <- function(agent, label, data_tools) {
   # list2(), not list(): shinychat calls stream_async(!!!user_input, ...), and only rlang's dots
   # splice `!!!`
   wrap_stream(agent, function(original, ...) {
     name <- if (is.function(label)) label(agent$get_model()) else label
-    grounded_stream(original, agent, list2(...), name)
+    grounded_stream(original, agent, list2(...), name, data_tools)
   })
 }

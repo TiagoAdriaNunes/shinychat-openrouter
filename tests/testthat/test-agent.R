@@ -14,8 +14,8 @@ box::use(
   S7[S7_inherits],
   stringr[fixed, regex, str_c, str_extract, str_remove, str_replace_all],
   testthat[
-    expect_equal, expect_error, expect_false, expect_match, expect_message, expect_null, expect_s3_class, expect_true,
-    test_that,
+    expect_equal, expect_error, expect_false, expect_match, expect_message, expect_null, expect_s3_class,
+    expect_setequal, expect_true, test_that,
   ],
   withr[defer, local_envvar, local_options],
 )
@@ -25,7 +25,7 @@ box::use(
   app / logic / config[world_bank],
   app / logic / dictionary[groups_table, wdi_source],
   app / logic / grounding[chart_stream, drop_empty_reply, ground_agent, grounded_stream, has_lookup, require_lookup],
-  app / logic / tools[check_arguments],
+  app / logic / tools[check_arguments, measure_names],
   app / logic / wdi[split_panel],
   app / measures / analysis[country_profile],
   app / measures / `world-bank`[compound_growth, indicator_chart, indicator_ranking, indicator_series, latest_values],
@@ -53,6 +53,15 @@ test_that("commons reads the five measures from the measures file", {
 
 test_that("commons reads every measure in the measures directory", {
   expect_message(print(semantic_layer(dirname(measures_file))), "6 measures")
+})
+
+test_that("measure_names() lists every measure, each also a tool that reads the data", {
+  expect_setequal(
+    measure_names(semantic_layer(dirname(measures_file))),
+    c("latest_values", "indicator_series", "indicator_ranking", "compound_growth", "indicator_chart", "country_profile")
+  )
+  # A layer commons changed (no readable measures) gives none
+  expect_equal(measure_names(new.env()), character())
 })
 
 test_that("indicator_chart() shows the user a chart and gives the model a text summary of it", {
@@ -236,11 +245,14 @@ fake_agent <- function(replies) {
   agent
 }
 
+data_tools <- as.character(unlist(world_bank$data_tools))
 lookup <- ContentToolRequest("1", "call_measure", list())
+# Finds measures but reads no data
+search <- ContentToolRequest("2", "search_pool", list(query = "GDP"))
 
 grounded <- function(agent, controller = NULL) {
   args <- list("GDP of Brazil?", stream = "content", controller = controller)
-  collect_stream(grounded_stream(agent$stream_async, agent, args, "Gemma"))
+  collect_stream(grounded_stream(agent$stream_async, agent, args, "Gemma", data_tools))
 }
 
 test_that("a reply that looks the data up is passed through, including text before the lookup", {
@@ -271,6 +283,18 @@ test_that("a model that never looks anything up gets the no-lookup message inste
   expect_equal(agent$turns, list())
 })
 
+test_that("a search for measures isn't a lookup: a reply from memory after it is dropped", {
+  searched <- ContentToolResult(value = "latest_values: Latest value of an indicator", request = search)
+  agent <- fake_agent(list(
+    list(search, searched, "In euros that's about 2.1 trillion."),
+    list(search, searched, lookup, "From the data: 2.28 trillion.")
+  ))
+
+  expect_equal(grounded(agent), "From the data: 2.28 trillion.")
+  expect_equal(length(agent$calls), 2)
+  expect_equal(agent$calls[[2]][[2]], world_bank$lookup_nudge)
+})
+
 test_that("a reply the user stopped before any lookup shows nothing and isn't retried", {
   agent <- fake_agent(list(list("Partial answer")))
   controller <- stream_controller()
@@ -281,21 +305,23 @@ test_that("a reply the user stopped before any lookup shows nothing and isn't re
 })
 
 test_that("the grounded agent accepts shinychat's spliced call, stream_async(!!!user_input, ...)", {
-  agent <- ground_agent(fake_agent(list(list(lookup, "From the data."))), "Gemma")
+  agent <- ground_agent(fake_agent(list(list(lookup, "From the data."))), "Gemma", data_tools)
   user_input <- list("GDP of Brazil?")
 
   expect_equal(collect_stream(agent$stream_async(!!!user_input, stream = "content")), "From the data.")
   expect_equal(agent$calls[[1]][[1]], "GDP of Brazil?")
 })
 
-test_that("has_lookup() counts successful tool results only", {
+test_that("has_lookup() counts successful results of the tools that read the data only", {
   ask <- UserTurn(list(ContentText("GDP of Brazil?")))
   found <- UserTurn(list(ContentToolResult(value = "2.28e12", request = lookup)))
   failed <- UserTurn(list(ContentToolResult(error = "Unknown indicator", request = lookup)))
+  searched <- UserTurn(list(ContentToolResult(value = "latest_values", request = search)))
 
-  expect_true(has_lookup(list(ask, found)))
-  expect_false(has_lookup(list(ask, failed)))
-  expect_false(has_lookup(list()))
+  expect_true(has_lookup(list(ask, found), data_tools))
+  expect_false(has_lookup(list(ask, failed), data_tools))
+  expect_false(has_lookup(list(ask, searched), data_tools))
+  expect_false(has_lookup(list(), data_tools))
 })
 
 test_that("once data was looked up, a follow-up answered from it is shown, not dropped or retried", {
@@ -423,10 +449,15 @@ test_that("require_lookup() requires a tool call only for a new question without
   local_envvar(OPENROUTER_API_KEY = "test-key")
   local_options(ellmer_max_tries = 1)
   sent <- list()
+  call_tool <- function(id, name) {
+    list(tool_calls = list(list(id = id, type = "function", `function` = list(name = name, arguments = "{}"))))
+  }
   replies <- list(
-    # The question: a tool call
-    list(tool_calls = list(list(id = "c1", type = "function", `function` = list(name = "lookup", arguments = "{}")))),
-    # After the tool result: the answer
+    # The question: only a search, then an answer from memory
+    call_tool("c1", "search"),
+    list(content = "About 42."),
+    # The next question: the search wasn't a lookup, so a tool call is required again
+    call_tool("c2", "lookup"),
     list(content = "It is 42."),
     # The follow-up, answered from the earlier result
     list(content = "Still 42.")
@@ -444,14 +475,19 @@ test_that("require_lookup() requires a tool call only for a new question without
   })
   client <- chat_openrouter(model = "a/alpha:free", echo = "none")
   client$register_tool(tool(function() "42", "Look the figure up", name = "lookup"))
-  require_lookup(client)
+  client$register_tool(tool(function() "lookup: the figure", "Find a tool", name = "search"))
+  require_lookup(client, data_tools = "lookup")
 
   client$chat("What is the figure?")
+  client$chat("What is the figure, from the data?")
   client$chat("And again?")
-  expect_equal(length(sent), 3)
+  expect_equal(length(sent), 5)
+  # A new question requires a tool call; requests in the tool loop don't
   expect_equal(sent[[1]]$tool_choice, "required")
   expect_null(sent[[2]]$tool_choice)
-  expect_null(sent[[3]]$tool_choice)
+  expect_equal(sent[[3]]$tool_choice, "required")
+  expect_null(sent[[4]]$tool_choice)
+  expect_null(sent[[5]]$tool_choice)
 })
 
 test_that("check_arguments() passes a JSON object and rejects anything else, showing the format", {
