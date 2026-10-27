@@ -1,13 +1,17 @@
 box::use(
   httr2[local_mocked_responses, response_json],
-  testthat[expect_equal, expect_error, expect_match, expect_null, expect_true, test_that],
-  withr[local_tempfile],
+  later[run_now],
+  mirai[daemons],
+  testthat[expect_equal, expect_error, expect_false, expect_match, expect_null, expect_true, test_that],
+  withr[defer, local_tempfile],
 )
 
 box::use(
   app / logic / config[source_url, world_bank],
   app / logic / imf[fetch_imf, last_actual_year],
-  app / logic / wdi[add_imf, load_wdi, split_panel, wdi_panel],
+  app / logic / wdi[
+    add_imf, download_wdi, load_wdi, read_wdi, split_panel, start_wdi_download, wdi_downloading, wdi_panel,
+  ],
 )
 
 test_that("split_panel() separates countries from aggregates, sorted, without WDI labels", {
@@ -153,20 +157,59 @@ test_that("load_wdi() falls back to a stale file when the download fails, and er
   expect_equal(load_wdi(fetch = failing, path = path, max_age_days = 0), saved)
 })
 
-test_that("load_wdi() doesn't download while a background download is running", {
+test_that("download_wdi() saves the download, and fails with it instead of falling back", {
   path <- local_tempfile(fileext = ".rds")
-  fetch <- function() stop("must not download")
-  running <- function() TRUE
+  panel <- download_wdi(path, fetch = function() split_panel(fake_wdi_raw()))
+  expect_equal(readRDS(path), panel)
 
-  expect_error(load_wdi(fetch = fetch, path = path, max_age_days = 7, downloading = running), "still downloading")
-
-  # An old copy is used meanwhile
-  saved <- split_panel(fake_wdi_raw())
-  saveRDS(saved, path)
-  expect_equal(load_wdi(fetch = fetch, path = path, max_age_days = 0, downloading = running), saved)
+  expect_error(download_wdi(path, fetch = function() stop("World Bank API down")), "API down")
 })
 
-test_that("wdi_panel() returns NULL instead of an error", {
-  expect_null(wdi_panel(load = function() stop("no network")))
-  expect_true(is.list(wdi_panel(load = function() split_panel(fake_wdi_raw()))))
+test_that("read_wdi() reads the cache file, even an old one, and never downloads", {
+  path <- local_tempfile(fileext = ".rds")
+  expect_error(read_wdi(path), "isn't downloaded yet")
+
+  saved <- split_panel(fake_wdi_raw())
+  saveRDS(saved, path)
+  Sys.setFileTime(path, Sys.time() - 30 * 24 * 60 * 60)
+  expect_equal(read_wdi(path), saved)
+})
+
+test_that("start_wdi_download() downloads in a mirai only when the file is missing or old", {
+  # mirai's synchronous mode runs each task in this process, so the fake downloads below can be used
+  daemons(sync = TRUE)
+  defer(daemons(0))
+  finish <- function() {
+    deadline <- Sys.time() + 10
+    while (wdi_downloading() && Sys.time() < deadline) {
+      run_now(0.05)
+    }
+    run_now(0.05)
+  }
+  fake_download <- function(path) download_wdi(path, fetch = function() split_panel(fake_wdi_raw()))
+
+  path <- local_tempfile(fileext = ".rds")
+  expect_true(start_wdi_download(path = path, max_age_days = 7, download = fake_download))
+  finish()
+  expect_false(wdi_downloading())
+  expect_true(file.exists(path))
+
+  # The file is fresh now: nothing starts
+  expect_false(start_wdi_download(path = path, max_age_days = 7, download = function(path) stop("must not run")))
+
+  # A failed download ends (and is logged) without writing a file
+  failed <- local_tempfile(fileext = ".rds")
+  expect_true(start_wdi_download(path = failed, max_age_days = 7, download = function(path) stop("API down")))
+  finish()
+  expect_false(wdi_downloading())
+  expect_false(file.exists(failed))
+})
+
+test_that("wdi_panel() starts a refresh, then reads the panel, or returns NULL instead of an error", {
+  refreshed <- FALSE
+  panel <- wdi_panel(load = function() split_panel(fake_wdi_raw()), refresh = function() refreshed <<- TRUE)
+  expect_true(refreshed)
+  expect_true(is.list(panel))
+
+  expect_null(wdi_panel(load = function() stop("not downloaded yet"), refresh = function() FALSE))
 })
