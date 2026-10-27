@@ -1,10 +1,11 @@
 box::use(
   cachem[cache_mem],
-  callr[r_bg],
   checkmate[test_file_exists, test_null, test_subset],
   dplyr[across, all_of, arrange, everything, filter, mutate, rename, rows_update, select],
   logger[log_info, log_warn],
   memoise[forget, memoise],
+  mirai[mirai, unresolved],
+  promises[then],
   purrr[discard, keep, map_chr, reduce, set_names],
   rlang[`:=`, abort, try_fetch],
   stringr[str_c],
@@ -115,91 +116,106 @@ is_fresh <- function(path, max_age_days) {
 # The background download started by start_wdi_download(), if any (one per R process)
 background <- new.env()
 
-#' Download the World Bank data in a background R process when the disk cache at `path` is missing
-#' or older than `max_age_days`, so the app can start (and show that it is downloading) instead of
-#' waiting about 30 seconds. `root` is the project root (box.path). Returns TRUE if one was started.
+#' Download the panel with `fetch` and save it at `path`, returning it; errors when the download fails.
 #' @export
-start_wdi_download <- function(path = world_bank$cache_file, max_age_days = world_bank$cache_days, root = getwd()) {
-  if (is_fresh(path, max_age_days) || wdi_downloading()) {
+download_wdi <- function(path = world_bank$cache_file, fetch = fetch_wdi) {
+  panel <- fetch()
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  # Written under another name first: another process may be reading the cache file
+  partial <- str_c(path, ".part")
+  saveRDS(panel, partial)
+  file.rename(partial, path)
+  log_info("Downloaded World Bank data: {nrow(panel$countries)} country-years")
+  panel
+}
+
+#' Refresh the cache at `path` in a background R process (a mirai) when it is missing, older than
+#' `max_age_days` or out of date with config.yml. Returns TRUE if a download started.
+#' @export
+start_wdi_download <- function(
+  path = world_bank$cache_file,
+  max_age_days = world_bank$cache_days,
+  root = getwd(),
+  download = NULL
+) {
+  if (wdi_downloading() || is_fresh(path, max_age_days)) {
     return(invisible(FALSE))
   }
   log_info("Downloading World Bank data in the background")
-  background$process <- r_bg(
-    function(root, path, max_age_days) {
-      options(box.path = root)
-      box::use(app / logic / wdi[load_wdi])
-      invisible(load_wdi(path = path, max_age_days = max_age_days))
+  # Without daemons(), mirai starts a one-off process; tests pass `download` instead of download_wdi()
+  background$task <- mirai(
+    {
+      if (is.null(download)) {
+        options(box.path = root)
+        box::use(app / logic / wdi[download_wdi])
+        download <- download_wdi
+      }
+      nrow(download(path)$countries)
     },
-    args = list(root = root, path = path, max_age_days = max_age_days),
-    wd = root
+    root = root,
+    path = path,
+    download = download
+  )
+  # The process's own output is discarded, so its result is logged here
+  then(
+    background$task,
+    onFulfilled = function(rows) {
+      log_info("Downloaded World Bank data in the background: {rows} country-years")
+      forget(cached_load)
+    },
+    onRejected = function(cnd) log_warn("Could not download World Bank data in the background: {conditionMessage(cnd)}")
   )
   invisible(TRUE)
 }
 
 #' TRUE while the background download from start_wdi_download() is running.
 #' @export
-wdi_downloading <- function() {
-  !test_null(background$process) && background$process$is_alive()
-}
+wdi_downloading <- function() !test_null(background$task) && unresolved(background$task)
 
-#' The World Bank panel from the disk cache at `path`, downloading it with `fetch` when the file is
-#' missing or older than `max_age_days`. A stale file is still used if the download fails, or while
-#' `downloading()` (a background download is running; without a file that is an error).
-#' Errors when there is neither a download nor a cached file.
+#' The panel from the cache at `path`, downloading it with `fetch` in this process when the file is
+#' missing or older than `max_age_days`, or the stale file if that fails (the Docker build's data step).
 #' @export
-load_wdi <- function(
-  fetch = fetch_wdi,
-  path = world_bank$cache_file,
-  max_age_days = world_bank$cache_days,
-  downloading = wdi_downloading
-) {
-  cached <- test_file_exists(path)
+load_wdi <- function(fetch = fetch_wdi, path = world_bank$cache_file, max_age_days = world_bank$cache_days) {
   if (is_fresh(path, max_age_days)) {
     return(readRDS(path))
   }
-  if (downloading()) {
-    if (!cached) {
-      abort("The World Bank data is still downloading.")
-    }
-    return(readRDS(path))
-  }
+  cached <- test_file_exists(path)
   # try_fetch(), not tryCatch(): an error rethrown with `parent` keeps the download's backtrace
-  try_fetch(
-    {
-      panel <- fetch()
-      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-      # Written under another name first: another process may be reading the cache file
-      partial <- str_c(path, ".part")
-      saveRDS(panel, partial)
-      file.rename(partial, path)
-      log_info("Downloaded World Bank data: {nrow(panel$countries)} country-years")
-      panel
-    },
-    error = function(cnd) {
-      if (!cached) {
-        abort("Could not download the World Bank and IMF data, and there is no cached copy.", parent = cnd)
-      }
-      log_warn("Could not refresh World Bank data, using the cached copy: {conditionMessage(cnd)}")
-      readRDS(path)
+  try_fetch(download_wdi(path, fetch), error = function(cnd) {
+    if (!cached) {
+      abort("Could not download the World Bank and IMF data, and there is no cached copy.", parent = cnd)
     }
-  )
+    log_warn("Could not refresh World Bank data, using the cached copy: {conditionMessage(cnd)}")
+    readRDS(path)
+  })
 }
 
-# Shared by all sessions in this R process. memoise only stores returned values,
-# so a failed load is retried on the next call instead of being cached.
-cached_load <- memoise(load_wdi, cache = cache_mem(max_age = world_bank$cache_days * 24 * 60 * 60))
-
-#' The World Bank panel (list of `countries`, `aggregates` and the `downloaded` date), or NULL
-#' when it can't be loaded. Uses `load` (cached in memory and on disk by default).
+#' The app's copy of the panel: the cache file at `path`, even an old one, or an error when there is
+#' none yet. The app itself never downloads: start_wdi_download() refreshes the file in the background.
 #' @export
-wdi_panel <- function(load = cached_load) {
-  # The background download just ended: drop the copy in memory (an old file read meanwhile)
-  if (!test_null(background$process) && !wdi_downloading()) {
-    background$process <- NULL
-    forget(cached_load)
+read_wdi <- function(path = world_bank$cache_file) {
+  if (!test_file_exists(path)) {
+    abort("The World Bank data isn't downloaded yet.")
   }
-  tryCatch(load(), error = function(e) {
-    log_warn("World Bank data unavailable: {conditionMessage(e)}")
-    NULL
-  })
+  readRDS(path)
+}
+
+# Shared by all sessions in this R process, and forgotten when a background download ends. memoise
+# only stores returned values, so a missing file is looked for again on the next call.
+cached_load <- memoise(read_wdi, cache = cache_mem(max_age = world_bank$cache_days * 24 * 60 * 60))
+
+#' The World Bank panel (list of `countries`, `aggregates`, ...) read with `load`, or NULL when there is
+#' none yet. First `refresh` starts a background download if the file is missing or old.
+#' @export
+wdi_panel <- function(load = cached_load, refresh = start_wdi_download) {
+  tryCatch(
+    {
+      refresh()
+      load()
+    },
+    error = function(e) {
+      log_warn("World Bank data unavailable: {conditionMessage(e)}")
+      NULL
+    }
+  )
 }

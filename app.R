@@ -15,7 +15,7 @@ box::use(
   app / logic / agent[prewarm_agent],
   app / logic / config[fallback_model, response_timeout_seconds, world_bank],
   app / logic / models[free_models, reasoning_options],
-  app / logic / wdi[start_wdi_download, wdi_panel],
+  app / logic / wdi[wdi_panel],
   app / main,
 )
 
@@ -40,7 +40,7 @@ later(function() {
     {
       free_models()
       reasoning_options()
-      start_wdi_download()
+      # Also starts a background download when the cache is missing or old
       panel <- wdi_panel()
       if (!test_null(panel)) {
         prewarm_agent(panel)
