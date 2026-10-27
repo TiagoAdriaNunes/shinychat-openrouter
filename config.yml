@@ -138,9 +138,12 @@ default:
       sources_heading: "Data sources"
     unavailable: "Agent mode isn't available right now because its data couldn't be loaded. Please try again later."
     busy: "Please wait for the current response to finish before switching mode."
-    # Shown (with a spinner) when the mode is picked while the data is still downloading, e.g. on
-    # the first start. The mode turns on when the download ends; picking Chat cancels the wait.
+    # Above a progress bar in every session while the data downloads (e.g. the first start); `loading`
+    # replaces it once Agent mode is picked, which then turns on by itself (picking Chat cancels that)
+    progress: "Getting Agent mode ready: downloading World Bank and IMF data. Chat works meanwhile."
     loading: "Downloading the data for Agent mode, about 30 seconds. Agent mode turns on by itself when it is ready."
+    # Under the progress bar: {done} and {total} are the parts downloaded so far and in all
+    progress_detail: "{done} of {total} parts downloaded"
     # Error returned to the model when call_measure's `arguments` isn't one JSON object (e.g. single
     # quotes, bare key: value pairs, or a cut-off "{"). {received} is what it sent.
     invalid_arguments: >-

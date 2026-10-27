@@ -6,7 +6,7 @@ box::use(
   memoise[forget, memoise],
   mirai[mirai, unresolved],
   promises[then],
-  purrr[discard, keep, map_chr, reduce, set_names],
+  purrr[discard, keep, map_chr, set_names],
   rlang[`:=`, abort, try_fetch],
   stringr[str_c],
   WDI[WDI],
@@ -76,23 +76,31 @@ add_imf <- function(panel, name, values) {
 
 #' Download every indicator, uncached (~30 s): World Bank ones with WDI, IMF ones up to their last
 #' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works.
+#' `progress(done, total)` is called as each part (World Bank, IMF definitions, each IMF indicator) ends.
 #' @export
-fetch_wdi <- function(fetch_imf_values = fetch_imf, fetch_metadata = fetch_imf_metadata) {
+fetch_wdi <- function(
+  fetch_imf_values = fetch_imf,
+  fetch_metadata = fetch_imf_metadata,
+  progress = function(done, total) NULL
+) {
+  total <- 2 + length(imf_indicators)
+  progress(0, total)
   raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     abort("The World Bank returned no data.")
   }
+  progress(1, total)
   imf_metadata <- tryCatch(fetch_metadata(), error = function(cnd) {
     log_warn("Could not fetch the IMF indicator definitions: {conditionMessage(cnd)}")
     list()
   })
-  panel <- reduce(
-    imf_indicators,
-    function(panel, i) {
-      add_imf(panel, i$name, fetch_imf_values(i$code, last_year = last_actual_year(imf_metadata[[i$code]])))
-    },
-    .init = split_panel(raw)
-  )
+  progress(2, total)
+  panel <- split_panel(raw)
+  for (k in seq_along(imf_indicators)) {
+    i <- imf_indicators[[k]]
+    panel <- add_imf(panel, i$name, fetch_imf_values(i$code, last_year = last_actual_year(imf_metadata[[i$code]])))
+    progress(2 + k, total)
+  }
   panel$definitions <- indicator_definitions(imf_metadata)
   panel$downloaded <- Sys.Date()
   panel
@@ -116,9 +124,36 @@ is_fresh <- function(path, max_age_days) {
 # The background download started by start_wdi_download(), if any (one per R process)
 background <- new.env()
 
-#' Download the panel with `fetch` and save it at `path`, returning it; errors when the download fails.
+progress_file <- function(path) str_c(path, ".progress")
+
+#' Record that `done` of `total` parts of the download to `path` are done, for wdi_progress(). The file
+#' is replaced in one step, so a reader never sees it half written.
 #' @export
-download_wdi <- function(path = world_bank$cache_file, fetch = fetch_wdi) {
+record_wdi_progress <- function(path, done, total) {
+  partial <- str_c(progress_file(path), ".part")
+  saveRDS(list(done = done, total = total), partial)
+  file.rename(partial, progress_file(path))
+  invisible(path)
+}
+
+#' Progress of the download to `path` as list(done, total), or NULL when there is none to read.
+#' @export
+wdi_progress <- function(path = world_bank$cache_file) {
+  if (!test_file_exists(progress_file(path))) {
+    return(NULL)
+  }
+  # The download may be replacing the file right now: then there is nothing to read this time
+  tryCatch(readRDS(progress_file(path)), error = function(e) NULL, warning = function(w) NULL)
+}
+
+#' Download the panel with `fetch` and save it at `path`, returning it; errors when the download fails.
+#' By default the download records its progress (record_wdi_progress()) until it ends.
+#' @export
+download_wdi <- function(
+  path = world_bank$cache_file,
+  fetch = function() fetch_wdi(progress = function(done, total) record_wdi_progress(path, done, total))
+) {
+  on.exit(unlink(progress_file(path)), add = TRUE)
   panel <- fetch()
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   # Written under another name first: another process may be reading the cache file
@@ -142,6 +177,7 @@ start_wdi_download <- function(
     return(invisible(FALSE))
   }
   log_info("Downloading World Bank data in the background")
+  unlink(progress_file(path))
   # Without daemons(), mirai starts a one-off process; tests pass `download` instead of download_wdi()
   background$task <- mirai(
     {

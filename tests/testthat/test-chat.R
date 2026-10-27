@@ -112,6 +112,19 @@ test_that("World Bank data mode loads the data once, lists only tool-calling mod
   )
 })
 
+test_that("download_progress() shows the message, an accessible bar and the parts done", {
+  html <- as.character(chat$download_progress(list(done = 3, total = 11), "Downloading"))
+  expect_match(html, 'role="progressbar" aria-label="Downloading" aria-valuenow="27"', fixed = TRUE)
+  expect_match(html, "width: 27%", fixed = TRUE)
+  expect_match(html, "3 of 11", fixed = TRUE)
+
+  # Before the first part is recorded: a sliver of a moving bar, no count
+  html <- as.character(chat$download_progress(NULL, "Downloading"))
+  expect_match(html, 'aria-valuenow="0"', fixed = TRUE)
+  expect_match(html, "width: 3%", fixed = TRUE)
+  expect_false(grepl("<small", html, fixed = TRUE))
+})
+
 test_that("World Bank data mode waits while the data is downloading, then turns on by itself", {
   local_envvar(OPENROUTER_API_KEY = "test-key")
   local_options(commons.allow_unsafe_fallback = TRUE)
@@ -125,7 +138,8 @@ test_that("World Bank data mode waits while the data is downloading, then turns 
         agent_models = fake_tool_models,
         efforts = fake_efforts,
         world_bank_data = function() if (downloading) NULL else fake_panel(),
-        data_loading = function() downloading
+        data_loading = function() downloading,
+        data_progress = function() list(done = 1, total = 11)
       )
     },
     {
@@ -147,6 +161,44 @@ test_that("World Bank data mode waits while the data is downloading, then turns 
       session$elapse(1000)
       expect_true(result$world_bank())
       expect_equal(result$model(), "a/alpha:free")
+    }
+  )
+})
+
+test_that("Agent mode waits for a download that turning it on has just started", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_options(commons.allow_unsafe_fallback = TRUE)
+  downloading <- FALSE
+  ready <- FALSE
+
+  testServer(
+    function(input, output, session) {
+      result <- chat$server(
+        "chat",
+        models = fake_models,
+        agent_models = fake_tool_models,
+        efforts = fake_efforts,
+        # Like wdi_panel() without a file: it starts a background download and has no data yet
+        world_bank_data = function() {
+          if (ready) {
+            return(fake_panel())
+          }
+          downloading <<- TRUE
+          NULL
+        },
+        data_loading = function() downloading,
+        data_progress = function() NULL
+      )
+    },
+    {
+      session$setInputs(chat_model = "b/beta:free", chat_mode = "chat")
+      session$setInputs(chat_mode = "world_bank")
+      expect_false(result$world_bank())
+
+      ready <<- TRUE
+      downloading <<- FALSE
+      session$elapse(1000)
+      expect_true(result$world_bank())
     }
   )
 })
