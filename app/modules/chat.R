@@ -1,6 +1,7 @@
 box::use(
   bslib[input_dark_mode, toolbar],
   checkmate[test_null, test_string],
+  glue[glue, glue_data],
   logger[log_error, log_info, log_warn],
   purrr[set_names],
   rlang[abort],
@@ -24,7 +25,7 @@ box::use(
   .. / logic / dictionary[wdi_source],
   .. / logic / models[free_models, nearest_effort, reasoning_options],
   .. / logic / theme[chat_theme],
-  .. / logic / wdi[wdi_downloading, wdi_panel],
+  .. / logic / wdi[wdi_downloading, wdi_panel, wdi_progress],
 )
 
 external_link <- function(href, ...) {
@@ -61,6 +62,32 @@ mode_tabs <- function(id) {
     option("world_bank", world_bank$label, "earth-americas")
   )
 }
+#' A notification's progress bar for the data download: `message`, the bar, and how many parts are done
+#' (`step`, from wdi_progress(); NULL before the first one is recorded).
+#' @export
+download_progress <- function(step, message) {
+  percent <- if (test_null(step)) 0 else round(100 * step$done / step$total)
+  tagList(
+    tags$p(class = "mb-2", message),
+    tags$div(
+      class = "progress",
+      role = "progressbar",
+      `aria-label` = message,
+      `aria-valuenow` = percent,
+      `aria-valuemin` = 0,
+      `aria-valuemax` = 100,
+      # Striped and moving (Bootstrap stops it for reduced motion), never empty: the first part is long
+      tags$div(
+        class = "progress-bar progress-bar-striped progress-bar-animated",
+        style = glue("width: {max(percent, 3)}%")
+      )
+    ),
+    if (!test_null(step)) {
+      tags$small(class = "text-body-secondary", glue_data(step, world_bank$progress_detail, .envir = baseenv()))
+    }
+  )
+}
+
 model_input_id <- function(id) str_c(id, "_model")
 effort_input_id <- function(id) str_c(id, "_effort")
 stats_output_id <- function(id) str_c(id, "_stats")
@@ -135,8 +162,8 @@ ui <- function(id) {
 
 #' Chat server (needs OPENROUTER_API_KEY). `models` and `agent_models` are the allowed models (label =
 #' name, value = id) for plain chat and Agent mode; `world_bank_data` returns the data panel or NULL,
-#' `data_loading` TRUE while it downloads, and `efforts` each model's effort levels (injected for
-#' tests). Returns reactives: `model` (id in use), `world_bank` (TRUE in Agent mode) and `stats`.
+#' `data_loading` TRUE while it downloads, `data_progress` its progress, and `efforts` each model's effort
+#' levels (injected for tests). Returns reactives: `model`, `world_bank` (TRUE in Agent mode) and `stats`.
 #' @export
 server <- function(
   id,
@@ -144,6 +171,7 @@ server <- function(
   agent_models = free_models(tools_only = TRUE),
   world_bank_data = wdi_panel,
   data_loading = wdi_downloading,
+  data_progress = wdi_progress,
   efforts = reasoning_options(),
   session = getDefaultReactiveDomain()
 ) {
@@ -348,6 +376,11 @@ server <- function(
       }
     )
     if (test_null(new_client)) {
+      # No data yet, but wdi_panel() has just started a download: wait for it
+      if (on && data_loading()) {
+        waiting(TRUE)
+        req(FALSE)
+      }
       revert(world_bank$unavailable)
     }
 
@@ -371,40 +404,48 @@ server <- function(
     log_info("Switched to {if (on) 'World Bank data' else 'chat'} mode with model {model}")
   }
 
-  # World Bank data mode picked while the data is still downloading (e.g. the app's first start):
-  # a spinner message stays up and the mode turns on when the download ends
+  # While the data downloads (e.g. the first start), a progress bar says so; Agent mode, if picked
+  # meanwhile (`waiting`), turns on when it ends. Redrawn only on a change, not to flood screen readers
   waiting <- reactiveVal(FALSE)
-  loading_id <- str_c(id, "_wdi_loading")
-  stop_waiting <- function() {
-    waiting(FALSE)
-    removeNotification(loading_id, session = session)
-  }
+  progress_id <- str_c(id, "_wdi_progress")
+  shown <- NULL
   observe({
-    req(waiting())
+    picked <- waiting()
     if (data_loading()) {
       invalidateLater(1000, session)
+      bar <- list(step = data_progress() %||% shown$step, picked = picked)
+      if (!identical(bar, shown)) {
+        shown <<- bar
+        message <- if (picked) world_bank$loading else world_bank$progress
+        showNotification(
+          download_progress(bar$step, message),
+          id = progress_id,
+          duration = NULL,
+          closeButton = FALSE,
+          session = session
+        )
+      }
     } else {
-      stop_waiting()
-      switch_mode(TRUE)
+      if (!test_null(shown)) {
+        shown <<- NULL
+        removeNotification(progress_id, session = session)
+      }
+      if (picked) {
+        waiting(FALSE)
+        switch_mode(TRUE)
+      }
     }
   })
 
   observeEvent(input[[mode_input_id(id)]], ignoreInit = TRUE, {
     on <- identical(input[[mode_input_id(id)]], "world_bank")
-    # Picking Chat again cancels the wait
+    # Picking Chat again cancels the wait (the progress bar stays while the download runs)
     if (!on && waiting()) {
-      stop_waiting()
+      waiting(FALSE)
     }
     req(on != agent_mode(), !waiting())
     if (on && test_null(source) && data_loading()) {
       waiting(TRUE)
-      showNotification(
-        tagList(tags$span(class = "spinner-border spinner-border-sm me-2", role = "status"), world_bank$loading),
-        id = loading_id,
-        duration = NULL,
-        closeButton = FALSE,
-        session = session
-      )
       req(FALSE)
     }
     switch_mode(on)

@@ -10,7 +10,8 @@ box::use(
   app / logic / config[source_url, world_bank],
   app / logic / imf[fetch_imf, last_actual_year],
   app / logic / wdi[
-    add_imf, download_wdi, load_wdi, read_wdi, split_panel, start_wdi_download, wdi_downloading, wdi_panel,
+    add_imf, download_wdi, load_wdi, read_wdi, record_wdi_progress, split_panel, start_wdi_download,
+    wdi_downloading, wdi_panel, wdi_progress,
   ],
 )
 
@@ -163,6 +164,24 @@ test_that("download_wdi() saves the download, and fails with it instead of falli
   expect_equal(readRDS(path), panel)
 
   expect_error(download_wdi(path, fetch = function() stop("World Bank API down")), "API down")
+})
+
+test_that("a download's recorded progress can be read until it ends", {
+  path <- local_tempfile(fileext = ".rds")
+  expect_null(wdi_progress(path))
+
+  record_wdi_progress(path, 3, 11)
+  expect_equal(wdi_progress(path), list(done = 3, total = 11))
+
+  # download_wdi() removes it when the download ends, whether it worked or not
+  download_wdi(path, fetch = function() {
+    record_wdi_progress(path, 1, 2)
+    split_panel(fake_wdi_raw())
+  })
+  expect_null(wdi_progress(path))
+  record_wdi_progress(path, 1, 2)
+  expect_error(download_wdi(path, fetch = function() stop("API down")), "API down")
+  expect_null(wdi_progress(path))
 })
 
 test_that("read_wdi() reads the cache file, even an old one, and never downloads", {
