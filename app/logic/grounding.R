@@ -53,11 +53,8 @@ has_lookup <- function(turns, data_tools) {
   })
 }
 
-#' Make the first request for each new question require a tool call (`tool_choice = "required"`), so
-#' the model looks the data up instead of answering from memory. Later requests in the tool loop, and
-#' questions in a conversation that already holds a lookup (has_lookup() with `data_tools`), go
-#' without it so the model can answer. Set from $on_request_start(), which runs before each request
-#' is built.
+#' Require a tool call (`tool_choice = "required"`) on the first request of a new question until the
+#' conversation holds a lookup (has_lookup()); tool-loop requests go without, so the model can answer.
 #' @export
 require_lookup <- function(agent, data_tools) {
   agent$on_request_start(function(turns) {
@@ -191,9 +188,8 @@ show_charts <- function(agent) {
   wrap_stream(agent, \(original, ...) chart_stream(original(...)))
 }
 
-#' Make `agent$stream_async()` go through grounded_stream(). `label` is the model name for messages,
-#' or a function of the model id (see guard_stream()); `data_tools` the names of the tools that read
-#' the data.
+#' Make `agent$stream_async()` go through grounded_stream(). `label` is the model name or a function of
+#' the model id (see guard_stream()); `data_tools` the tools that read the data.
 #' @export
 ground_agent <- function(agent, label, data_tools) {
   # list2(), not list(): shinychat calls stream_async(!!!user_input, ...), and only rlang's dots

@@ -5,7 +5,8 @@ options(box.path = getwd())
 
 box::use(
   checkmate[test_null],
-  logger[log_info, log_threshold],
+  later[later],
+  logger[log_error, log_info, log_threshold],
   shiny[shinyApp],
 )
 
@@ -30,19 +31,23 @@ check_api_key()
 # much sooner by watch_stream() (app/logic/client.R)
 options(ellmer_timeout_s = response_timeout_seconds)
 
-# Fetch the model lists and effort levels now (one cached fetch shared by every session), so neither
-# the first visitor nor the first switch to Agent mode waits for them
-invisible(free_models())
-invisible(reasoning_options())
-
-# Load the data and build the agent's context index now, so Agent mode opens quickly. A missing or
-# old cache is downloaded in the background (~30 s): an old copy is used meanwhile, or Agent mode
-# waits for it with a loading message.
 options(commons.context_cache = world_bank$context_cache)
-start_wdi_download()
-panel <- wdi_panel()
-if (!test_null(panel)) {
-  prewarm_agent(panel)
-}
+
+# Warm-ups run once runApp() has opened the port: before it, a ~5 s cold start made Fly's proxy give
+# up and show the first visitor an error. Requests meanwhile wait; a failure is only logged.
+later(function() {
+  tryCatch(
+    {
+      free_models()
+      reasoning_options()
+      start_wdi_download()
+      panel <- wdi_panel()
+      if (!test_null(panel)) {
+        prewarm_agent(panel)
+      }
+    },
+    error = function(e) log_error("Warm-up failed: {conditionMessage(e)}")
+  )
+})
 
 shinyApp(main$ui(), main$server)

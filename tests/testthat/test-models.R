@@ -99,6 +99,21 @@ test_that("the memoised fetch does not cache failures", {
   expect_equal(free_models(fetch = cached), fake_models)
 })
 
+test_that("the memoised fetch does not cache an empty model list", {
+  # e.g. the account's model list came back empty, so every free model was left out
+  empty <- TRUE
+  openrouter <- fake_openrouter()
+  local_mocked_responses(function(req) {
+    if (empty) response_json(body = list(data = list())) else openrouter(req)
+  })
+  cached <- memoise(fetch_free_models, cache = cache_mem(max_age = 3600))
+
+  expect_equal(free_models(fetch = cached), c("Free Models Router" = "openrouter/free"))
+
+  empty <- FALSE
+  expect_equal(free_models(fetch = cached), fake_models)
+})
+
 test_that("reasoning_options() lists each model's effort levels and default, or none when it can't fetch them", {
   local_mocked_responses(fake_openrouter())
   expect_equal(reasoning_options(fetch = fetch_free_models), fake_efforts)

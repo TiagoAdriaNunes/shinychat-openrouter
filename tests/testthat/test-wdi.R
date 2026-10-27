@@ -6,7 +6,7 @@ box::use(
 
 box::use(
   app / logic / config[source_url, world_bank],
-  app / logic / imf[fetch_imf],
+  app / logic / imf[fetch_imf, last_actual_year],
   app / logic / wdi[add_imf, load_wdi, split_panel, wdi_panel],
 )
 
@@ -128,6 +128,18 @@ test_that("fetch_imf() reads the DataMapper values, recodes IMF codes and drops 
 test_that("fetch_imf() errors when the IMF returns no values for the indicator", {
   local_mocked_responses(function(req) response_json(body = list(values = list())))
   expect_error(fetch_imf("GGXWDG_NGDP"), "no data for GGXWDG_NGDP")
+})
+
+test_that("last_actual_year() stops before the edition's forecasts, even early the next year", {
+  weo <- list(source = "World Economic Outlook (October 2026)")
+  expect_equal(last_actual_year(weo, today = as.Date("2026-10-24")), 2025L)
+  # The calendar alone would keep 2026, which this edition forecasts
+  expect_equal(last_actual_year(weo, today = as.Date("2027-02-01")), 2025L)
+  expect_equal(last_actual_year(list(source = "Global Debt Database (Sep 2025)"), as.Date("2026-10-24")), 2024L)
+
+  # Without an edition, the year before the current one
+  expect_equal(last_actual_year(NULL, today = as.Date("2027-02-01")), 2026L)
+  expect_equal(last_actual_year(list(source = "World Economic Outlook"), as.Date("2027-02-01")), 2026L)
 })
 
 test_that("load_wdi() falls back to a stale file when the download fails, and errors without one", {

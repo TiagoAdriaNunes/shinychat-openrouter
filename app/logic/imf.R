@@ -5,6 +5,7 @@ box::use(
   httr2[req_perform, req_retry, req_timeout, req_user_agent, request, resp_body_json],
   purrr[compact, imap, list_rbind],
   rlang[abort],
+  stringr[str_match],
 )
 
 box::use(
@@ -23,8 +24,8 @@ get_imf <- function(url) {
 }
 
 #' Yearly values of an IMF DataMapper indicator (e.g. GGXWDG_NGDP, general government gross debt)
-#' as columns iso3c, year and value, up to `last_year`: the World Economic Outlook also has
-#' projections for the coming years. IMF codes that differ from the World Bank's are recoded
+#' as columns iso3c, year and value, up to `last_year` (see last_actual_year()): the World Economic
+#' Outlook also has projections for the coming years. IMF codes that differ from the World Bank's are recoded
 #' (`world_bank$imf$iso3`); the IMF's country groups (EURO, WEOWORLD, ...) are kept as they are.
 #' One row per economy and year (add_imf() needs unique keys).
 #' @export
@@ -42,6 +43,14 @@ fetch_imf <- function(code, last_year = as.integer(format(Sys.Date(), "%Y")) - 1
     mutate(iso3c = coalesce(unname(recode[iso3c]), iso3c)) |>
     filter(year <= last_year) |>
     distinct(iso3c, year, .keep_all = TRUE)
+}
+
+#' Last year of actual data in an IMF indicator: the year before the edition in its `metadata$source`
+#' ("World Economic Outlook (October 2026)" -> 2025), and never after the year before `today`.
+#' @export
+last_actual_year <- function(metadata, today = Sys.Date()) {
+  edition <- as.integer(str_match(metadata$source %||% NA_character_, "(\\d{4})\\)\\s*$")[, 2])
+  min(edition, as.integer(format(today, "%Y")), na.rm = TRUE) - 1L
 }
 
 #' Metadata of every IMF DataMapper indicator, named by code: a list with its `label`,
