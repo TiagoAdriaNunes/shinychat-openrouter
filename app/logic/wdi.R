@@ -14,7 +14,7 @@ box::use(
 box::use(
   . / config[world_bank],
   . / definitions[indicator_definitions],
-  . / imf[fetch_imf, fetch_imf_metadata],
+  . / imf[fetch_imf, fetch_imf_metadata, last_actual_year],
   . / indicators[is_imf],
 )
 
@@ -63,9 +63,8 @@ split_panel <- function(raw) {
   list(countries = countries, aggregates = aggregates, codes = indicator_sources, definitions = indicator_definitions())
 }
 
-#' Fill the `name` column of the panel's countries with IMF `values` (columns iso3c, year, value,
-#' from fetch_imf()), replacing what it held. Aggregates stay empty: the IMF's country groups aren't
-#' the World Bank's.
+#' Fill the countries' `name` column with IMF `values` (from fetch_imf()), only for country-years the
+#' World Bank data has (later IMF years wait for it); aggregates stay empty (IMF groups differ).
 #' @export
 add_imf <- function(panel, name, values) {
   panel$countries <- panel$countries |>
@@ -74,24 +73,25 @@ add_imf <- function(panel, name, values) {
   panel
 }
 
-#' Download the configured indicators for every country and aggregate, uncached (about 30 seconds):
-#' the World Bank ones with WDI, the others with `fetch_imf`, and the IMF indicators' definitions
-#' with `fetch_metadata` (without them if that fails: the data matters more).
+#' Download every indicator, uncached (~30 s): World Bank ones with WDI, IMF ones up to their last
+#' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works.
 #' @export
 fetch_wdi <- function(fetch_imf_values = fetch_imf, fetch_metadata = fetch_imf_metadata) {
   raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     abort("The World Bank returned no data.")
   }
-  panel <- reduce(
-    imf_indicators,
-    \(panel, i) add_imf(panel, i$name, fetch_imf_values(i$code)),
-    .init = split_panel(raw)
-  )
   imf_metadata <- tryCatch(fetch_metadata(), error = function(cnd) {
     log_warn("Could not fetch the IMF indicator definitions: {conditionMessage(cnd)}")
     list()
   })
+  panel <- reduce(
+    imf_indicators,
+    function(panel, i) {
+      add_imf(panel, i$name, fetch_imf_values(i$code, last_year = last_actual_year(imf_metadata[[i$code]])))
+    },
+    .init = split_panel(raw)
+  )
   panel$definitions <- indicator_definitions(imf_metadata)
   panel$downloaded <- Sys.Date()
   panel

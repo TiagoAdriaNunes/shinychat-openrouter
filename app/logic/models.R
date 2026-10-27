@@ -153,15 +153,17 @@ model_reasoning <- function(model) {
   list(efforts = efforts, default = if (test_string(default) && default %in% efforts) default else efforts[[1]])
 }
 
-#' Fetch OpenRouter's model catalogue once, uncached, and pick from it `all` (the free text models
-#' for plain chat), `tools` (those supporting tool calling, for Agent mode) and `efforts` (every
-#' model's reasoning effort options by id, see model_reasoning()). Errors if the request fails.
+#' Fetch OpenRouter's catalogue once, uncached: free text models (`all`), tool-calling ones (`tools`)
+#' and every model's `efforts`. Errors on failure or no free model, so memoise never keeps an empty list.
 #' @export
 fetch_free_models <- function() {
   models <- get_json(models_url)$data
   free <- keep(models, \(m) is_free(m) && is_text_only(m) && !m$id %in% excluded_models)
   free <- keep_usable(free)
-  uptime <- if (test_number(min_uptime_30m) && length(free) > 0) uptimes_30m(map_chr(free, "id"))
+  if (length(free) == 0) {
+    abort("No free text models in the response.")
+  }
+  uptime <- if (test_number(min_uptime_30m)) uptimes_30m(map_chr(free, "id"))
   list(
     all = pick_models(free, uptime, tools_only = FALSE),
     tools = pick_models(free, uptime, tools_only = TRUE),

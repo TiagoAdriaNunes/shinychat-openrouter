@@ -366,9 +366,8 @@ default:
     # Make the model call a tool on the first request for each new question (OpenRouter `tool_choice:
     # required`) so it looks the data up; for the free models that ignore it, see lookup_nudge.
     require_lookup: true
-    # The tools that read the data, besides each measure's own tool: a reply counts as looked up only
-    # once it calls one of them (grounded_stream() in app/logic/grounding.R). commons' other tools
-    # (search_pool, search_context, describe_table, ...) find measures, notes or columns, not figures.
+    # Tools that read the data, besides each measure's own tool: only calling one counts as a lookup
+    # (app/logic/grounding.R); search_pool, search_context and describe_table return no figures
     data_tools: [call_measure, run_sql, run_r]
     # Replace commons' descriptions of these tools, which say to search before any data question and so
     # contradict `instructions`; each measure is also a tool of its own (measure_tools(), app/logic/tools.R)
