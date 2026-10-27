@@ -19,7 +19,7 @@ box::use(
   . / definitions[definitions_markdown],
   . / dictionary[group_names, wdi_source],
   . / grounding[ground_agent, require_lookup, show_charts],
-  . / tools[check_measure_calls, describe_tools, measure_tools],
+  . / tools[check_measure_calls, describe_tools, measure_names, measure_tools],
 )
 
 # Layer files from config.yml, resolved from the project root so they work from any working directory
@@ -86,11 +86,12 @@ new_agent <- function(model, label, source, context = context_files) {
   describe_tools(agent)
   measure_tools(agent, layer)
   check_measure_calls(agent)
+  data_tools <- c(as.character(unlist(world_bank$data_tools)), measure_names(layer))
   if (isTRUE(world_bank$require_lookup)) {
-    require_lookup(agent)
+    require_lookup(agent, data_tools)
   }
   # The stall check goes innermost, to see every chunk, including the text grounded_stream() holds
-  guard_stream(ground_agent(show_charts(watch_stream(agent)), label), label)
+  guard_stream(ground_agent(show_charts(watch_stream(agent)), label, data_tools), label)
 }
 
 #' Build the agent's context search index now instead of during the first question; it is cached in

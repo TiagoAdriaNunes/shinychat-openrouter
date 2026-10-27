@@ -5,7 +5,7 @@ box::use(
   glue[glue_data],
   jsonlite[toJSON, validate],
   logger[log_warn],
-  purrr[discard],
+  purrr[discard, map_chr],
   rlang[abort, list2],
   S7[`S7_data<-`],
   stringr[fixed, str_c, str_detect, str_starts, str_to_lower, str_trim],
@@ -72,15 +72,23 @@ forward_measure <- function(call_measure, measure) {
   }
 }
 
+# The tool definitions commons builds for the measures of `layer` (a semantic_layer()), read from its
+# private fields: commons exports no accessor. Empty if that changes.
+layer_measures <- function(layer) layer$.__enclos_env__$private$measures
+
+#' Names of the measures of `layer` (a semantic_layer()), each also a tool of its own (measure_tools()).
+#' @export
+measure_names <- function(layer) map_chr(layer_measures(layer), \(measure) measure@name)
+
 #' Register each measure of `layer` (a semantic_layer()) as a tool of its own, with the name,
 #' description and arguments commons gives it, run through call_measure: models then send plain
 #' fields instead of JSON inside a string, which some cut off. commons still runs the measure, so
-#' results and trust are unchanged. The measures are read from the layer's private fields (commons
-#' exports no accessor); without them the agent keeps only call_measure.
+#' results and trust are unchanged. Without the layer's measures (layer_measures()) the agent keeps
+#' only call_measure.
 #' @export
 measure_tools <- function(agent, layer) {
   tools <- agent$get_tools()
-  measures <- layer$.__enclos_env__$private$measures
+  measures <- layer_measures(layer)
   if (!"call_measure" %in% names(tools) || length(measures) == 0) {
     log_warn("World Bank measures not registered as tools: commons' semantic layer changed")
     return(agent)
