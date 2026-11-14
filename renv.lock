@@ -1295,7 +1295,7 @@
     },
     "diffobj": {
       "Package": "diffobj",
-      "Version": "0.3.9",
+      "Version": "0.3.10",
       "Source": "Repository",
       "Type": "Package",
       "Title": "Diffs for R Objects",
@@ -1325,7 +1325,7 @@
       "NeedsCompilation": "yes",
       "Author": "Brodie Gaslam [aut, cre], Michael B. Allen [ctb, cph] (Original C implementation of Myers Diff Algorithm)",
       "Maintainer": "Brodie Gaslam <brodie.gaslam@yahoo.com>",
-      "Repository": "https://packagemanager.posit.co/cran/latest"
+      "Repository": "CRAN"
     },
     "digest": {
       "Package": "digest",
@@ -1592,7 +1592,7 @@
     },
     "ellmer": {
       "Package": "ellmer",
-      "Version": "0.5.0",
+      "Version": "0.5.2",
       "Source": "Repository",
       "Title": "Chat with Large Language Models",
       "Authors@R": "c( person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0003-4757-117X\")), person(\"Joe\", \"Cheng\", role = \"aut\"), person(\"Aaron\", \"Jacobs\", role = \"aut\"), person(\"Garrick\", \"Aden-Buie\", , \"garrick@posit.co\", role = \"aut\", comment = c(ORCID = \"0000-0002-7111-0077\")), person(\"Barret\", \"Schloerke\", , \"barret@posit.co\", role = \"aut\", comment = c(ORCID = \"0000-0001-9986-114X\")), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"), comment = c(ROR = \"03wc8by49\")) )",
@@ -1645,7 +1645,7 @@
       "Config/testthat/parallel": "true",
       "Config/testthat/start-first": "chat, provider*",
       "Encoding": "UTF-8",
-      "Collate": "'utils-S7.R' 'types.R' 'ellmer-package.R' 'tools-def.R' 'content.R' 'provider.R' 'as-json.R' 'batch-chat.R' 'chat-structured.R' 'chat-tools-content.R' 'turns.R' 'chat-tools.R' 'chat-utils.R' 'utils-coro.R' 'chat.R' 'files.R' 'content-document.R' 'content-image.R' 'content-pdf.R' 'content-replay.R' 'httr2.R' 'import-standalone-defer.R' 'import-standalone-obj-type.R' 'import-standalone-purrr.R' 'import-standalone-types-check.R' 'interpolate.R' 'live.R' 'model.R' 'otel.R' 'parallel-chat.R' 'params.R' 'prices.R' 'provider-any.R' 'provider-aws-api.R' 'provider-openai-compatible.R' 'provider-openai.R' 'provider-claude.R' 'provider-aws.R' 'provider-azure.R' 'provider-claude-files.R' 'provider-claude-tools.R' 'provider-google.R' 'provider-cloudflare.R' 'provider-databricks.R' 'provider-deepseek.R' 'provider-github.R' 'provider-google-tools.R' 'provider-google-upload.R' 'provider-groq.R' 'provider-huggingface.R' 'provider-lmstudio.R' 'provider-mistral.R' 'provider-ollama.R' 'provider-openai-tools.R' 'provider-openrouter.R' 'provider-perplexity.R' 'provider-portkey.R' 'provider-posit.R' 'provider-snowflake.R' 'provider-vllm.R' 'rounds.R' 'schema.R' 'stream-controller.R' 'tokens.R' 'tool-context.R' 'tools-built-in.R' 'tools-def-auto.R' 'utils-auth.R' 'utils-callbacks.R' 'utils-cat.R' 'utils-merge.R' 'utils-prettytime.R' 'utils.R' 'zzz.R'",
+      "Collate": "'utils-S7.R' 'types.R' 'ellmer-package.R' 'tools-def.R' 'content.R' 'provider.R' 'as-json.R' 'batch-chat.R' 'chat-structured.R' 'chat-tools-content.R' 'turns.R' 'chat-tools.R' 'chat-utils.R' 'utils-coro.R' 'chat.R' 'files.R' 'content-document.R' 'content-image.R' 'content-pdf.R' 'content-replay.R' 'httr2.R' 'import-standalone-defer.R' 'import-standalone-obj-type.R' 'import-standalone-purrr.R' 'import-standalone-types-check.R' 'interpolate.R' 'live.R' 'model.R' 'otel.R' 'parallel-chat.R' 'params.R' 'prices.R' 'provider-any.R' 'provider-aws-api.R' 'provider-openai-compatible.R' 'provider-openai.R' 'provider-claude.R' 'provider-aws.R' 'provider-azure.R' 'provider-claude-files.R' 'provider-claude-tools.R' 'provider-google.R' 'provider-cloudflare.R' 'provider-databricks.R' 'provider-deepseek.R' 'provider-github.R' 'tools-built-in.R' 'provider-google-interactions.R' 'provider-google-tools.R' 'provider-google-upload.R' 'provider-groq.R' 'provider-huggingface.R' 'provider-lmstudio.R' 'provider-mistral.R' 'provider-ollama.R' 'provider-openai-tools.R' 'provider-openrouter.R' 'provider-perplexity.R' 'provider-portkey.R' 'provider-posit.R' 'provider-snowflake.R' 'provider-vllm.R' 'rounds.R' 'schema.R' 'stream-controller.R' 'tokens.R' 'tool-context.R' 'tools-def-auto.R' 'utils-auth.R' 'utils-callbacks.R' 'utils-cat.R' 'utils-merge.R' 'utils-prettytime.R' 'utils.R' 'zzz.R'",
       "NeedsCompilation": "no",
       "Author": "Hadley Wickham [aut, cre] (ORCID: <https://orcid.org/0000-0003-4757-117X>), Joe Cheng [aut], Aaron Jacobs [aut], Garrick Aden-Buie [aut] (ORCID: <https://orcid.org/0000-0002-7111-0077>), Barret Schloerke [aut] (ORCID: <https://orcid.org/0000-0001-9986-114X>), Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
@@ -3215,7 +3215,7 @@
     },
     "ragnar": {
       "Package": "ragnar",
-      "Version": "0.3.1",
+      "Version": "0.4.0",
       "Source": "Repository",
       "Title": "Retrieval-Augmented Generation (RAG) Workflows",
       "Authors@R": "c( person(\"Tomasz\", \"Kalinowski\", , \"tomasz@posit.co\", role = c(\"aut\", \"cre\")), person(\"Daniel\", \"Falbel\", , \"daniel@posit.co\", role = \"aut\"), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"), comment = c(ROR = \"03wc8by49\")) )",
@@ -3235,11 +3235,12 @@
         "mirai (>= 2.6.0)",
         "dbplyr",
         "dplyr",
-        "duckdb (>= 1.3.1)",
+        "duckdb (>= 1.5.0)",
         "glue",
         "httr2",
         "jsonlite",
         "methods",
+        "nanonext",
         "reticulate (>= 1.42.0)",
         "rlang (>= 1.1.0)",
         "rvest",
@@ -3266,13 +3267,14 @@
         "testthat (>= 3.0.0)",
         "tibble",
         "jose",
-        "openssl"
+        "openssl",
+        "webfakes"
       ],
       "VignetteBuilder": "knitr",
       "Config/Needs/website": "tidyverse/tidytemplate, rmarkdown",
       "Config/testthat/edition": "3",
       "Encoding": "UTF-8",
-      "Config/roxygen2/version": "8.1.0",
+      "Config/roxygen2/version": "8.1.1",
       "NeedsCompilation": "yes",
       "Author": "Tomasz Kalinowski [aut, cre], Daniel Falbel [aut], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
       "Maintainer": "Tomasz Kalinowski <tomasz@posit.co>",
