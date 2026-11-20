@@ -8,7 +8,7 @@ box::use(
   promises[then],
   purrr[discard, keep, map_chr, set_names],
   rlang[`:=`, abort, try_fetch],
-  stringr[str_c],
+  stringr[str_c, str_flatten_comma],
   WDI[WDI],
 )
 
@@ -75,8 +75,8 @@ add_imf <- function(panel, name, values) {
 }
 
 #' Download every indicator, uncached (~30 s): World Bank ones with WDI, IMF ones up to their last
-#' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works. An IMF
-#' indicator that fails stays empty and is listed in `missing`; only a World Bank failure is an error.
+#' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works. An indicator
+#' that fails stays empty and is listed in `missing`; it is an error only when every World Bank one fails.
 #' `progress(done, total)` is called as each part (World Bank, IMF definitions, each IMF indicator) ends.
 #' @export
 fetch_wdi <- function(
@@ -89,9 +89,17 @@ fetch_wdi <- function(
 ) {
   total <- 2 + length(imf_indicators)
   progress(0, total)
-  raw <- fetch_raw()
+  # WDI() drops the indicators it can't download with a warning (and errors only when all fail)
+  raw <- withCallingHandlers(fetch_raw(), warning = function(cnd) {
+    log_warn("World Bank download: {conditionMessage(cnd)}")
+    invokeRestart("muffleWarning")
+  })
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     abort("The World Bank returned no data.")
+  }
+  failed <- setdiff(names(indicator_codes), names(raw))
+  if (length(failed) > 0) {
+    log_error("Could not download the World Bank indicators {str_flatten_comma(indicator_codes[failed])}")
   }
   progress(1, total)
   imf_metadata <- tryCatch(fetch_metadata(), error = function(cnd) {
@@ -100,7 +108,7 @@ fetch_wdi <- function(
   })
   progress(2, total)
   panel <- split_panel(raw)
-  panel$missing <- character()
+  panel$missing <- failed
   for (k in seq_along(imf_indicators)) {
     i <- imf_indicators[[k]]
     values <- tryCatch(
@@ -133,14 +141,14 @@ matches_config <- function(panel) {
     !test_null(panel$definitions)
 }
 
-# A cache with indicators that failed to download (`missing`) is retried after `world_bank$imf$retry_hours`
+# A cache with indicators that failed to download (`missing`) is retried after `world_bank$retry_hours`
 is_fresh <- function(path, max_age_days) {
   if (!test_file_exists(path)) {
     return(FALSE)
   }
   panel <- readRDS(path)
   if (length(panel$missing) > 0) {
-    max_age_days <- min(max_age_days, world_bank$imf$retry_hours / 24)
+    max_age_days <- min(max_age_days, world_bank$retry_hours / 24)
   }
   file_age_days(path) < max_age_days && matches_config(panel)
 }

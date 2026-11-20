@@ -286,9 +286,6 @@ default:
       # requests are tried up to max_tries times with growing waits; the User-Agent names the app.
       timeout_seconds: 30
       max_tries: 3
-      # A failed indicator is left empty (the download still succeeds); a cache with empty ones is
-      # downloaded again after this many hours instead of cache_days
-      retry_hours: 6
       # IMF codes that differ from the World Bank's ISO3 codes
       iso3:
         UVK: XKX # Kosovo
@@ -346,6 +343,9 @@ default:
     # cache_days (an older copy is still used if a new download fails)
     cache_file: "cache/wdi.rds"
     cache_days: 7
+    # An indicator that fails to download (World Bank or IMF) is left empty and the download still
+    # succeeds; a cache with empty ones is downloaded again after this many hours instead of cache_days
+    retry_hours: 6
     # commons' context search index (data dictionary, notes, definitions), built at startup and kept
     # here; rebuilt only when their text changes
     context_cache: "cache/commons"
