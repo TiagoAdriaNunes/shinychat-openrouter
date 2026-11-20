@@ -4,7 +4,7 @@ box::use(
   mirai[daemons],
   purrr[keep, map_chr],
   rlang[abort],
-  testthat[expect_equal, expect_error, expect_false, expect_match, expect_null, expect_true, test_that],
+  testthat[expect_equal, expect_error, expect_false, expect_match, expect_no_warning, expect_null, expect_true, test_that],
   withr[defer, local_tempfile],
 )
 
@@ -173,6 +173,27 @@ test_that("fetch_wdi() leaves an IMF indicator that fails empty and lists it, ke
   expect_equal(panel$countries$gdp_usd, split_panel(raw)$countries$gdp_usd)
 })
 
+test_that("fetch_wdi() lists the World Bank indicators WDI dropped, without passing on its warning", {
+  raw <- fake_wdi_raw()
+  raw$gini <- NULL
+  # What WDI() does when some indicators fail: warn and leave their columns out
+  fetch_raw <- function() {
+    warning("Unable to download indicators SI.POV.GINI")
+    raw
+  }
+
+  expect_no_warning(
+    panel <- fetch_wdi(
+      fetch_imf_values = function(code, last_year) data.frame(iso3c = "BRA", year = 2021L, value = 1),
+      fetch_metadata = function() list(),
+      fetch_raw = fetch_raw
+    )
+  )
+  expect_equal(panel$missing, "gini")
+  expect_true(all(is.na(panel$countries$gini)))
+  expect_equal(panel$countries$gdp_usd, split_panel(raw)$countries$gdp_usd)
+})
+
 test_that("a cache with indicators that failed to download is retried sooner", {
   path <- local_tempfile(fileext = ".rds")
   calls <- 0
@@ -184,16 +205,16 @@ test_that("a cache with indicators that failed to download is retried sooner", {
   saveRDS(saved, path)
   hours_old <- function(hours) Sys.setFileTime(path, Sys.time() - hours * 60 * 60)
 
-  hours_old(world_bank$imf$retry_hours + 1)
+  hours_old(world_bank$retry_hours + 1)
   load_wdi(fetch = fetch, path = path, max_age_days = 7)
   expect_equal(calls, 0)
 
   saved$missing <- "gov_debt_pct_gdp"
   saveRDS(saved, path)
-  hours_old(world_bank$imf$retry_hours - 1)
+  hours_old(world_bank$retry_hours - 1)
   load_wdi(fetch = fetch, path = path, max_age_days = 7)
   expect_equal(calls, 0)
-  hours_old(world_bank$imf$retry_hours + 1)
+  hours_old(world_bank$retry_hours + 1)
   load_wdi(fetch = fetch, path = path, max_age_days = 7)
   expect_equal(calls, 1)
 })
