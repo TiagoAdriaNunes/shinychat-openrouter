@@ -3,7 +3,7 @@
 
 box::use(
   checkmate[test_null, test_string],
-  commons[commons, context_layer, semantic_layer],
+  commons[agent, commons, context_layer, semantic_layer],
   ellmer[chat_openrouter],
   glue[glue_data],
   logger[log_info, log_warn],
@@ -73,13 +73,16 @@ new_agent <- function(model, label, source, context = context_files) {
   # Without an OS sandbox commons aborts unless commons.allow_unsafe_fallback is set
   unsafe <- if (isTRUE(world_bank$allow_unsafe_fallback)) list(commons.allow_unsafe_fallback = TRUE) else list()
   layer <- measure_layer()
+  layers <- commons(
+    data_sources = list(wdi = source),
+    semantic_layer = layer,
+    context_layer = context_layer(context),
+    instructions = agent_instructions()
+  )
   agent <- with_options(unsafe, {
-    commons(
+    agent(
       chat_openrouter(model = model, api_args = reasoning_args(world_bank$reasoning_effort)),
-      data_sources = list(wdi = source),
-      semantic_layer = layer,
-      context_layer = context_layer(context),
-      instructions = agent_instructions(),
+      commons = layers,
       network = "none"
     )
   })
