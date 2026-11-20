@@ -4,17 +4,37 @@ box::use(
   ellmer[AssistantPartialTurn, AssistantTurn, chat_openrouter, ContentText],
   glue[glue, glue_data],
   later[later],
-  logger[log_warn],
+  logger[log_info, log_warn],
   promises[finally, promise, promise_race, promise_resolve],
   purrr[keep, map_dbl],
   rlang[error_cnd],
   S7[S7_inherits],
+  utils[assignInNamespace],
   stringr[fixed, str_c, str_detect, str_extract, str_flatten, str_length, str_remove, str_starts, str_sub],
 )
 
 box::use(
   . / config[error_messages, idle_timeout_seconds],
 )
+
+#' Work around ellmer >= 0.5.1 keeping OpenRouter's `"cost": 0` (free models) as an integer, which S7
+#' rejects as a turn's `@cost`, failing every reply. Patches only while the bug is there; returns TRUE if it did.
+#' @export
+fix_openrouter_cost <- function() {
+  ns <- asNamespace("ellmer")
+  if (!exists("openrouter_actual_cost", ns) || !is.integer(unclass(ns$openrouter_actual_cost(0L)))) {
+    return(FALSE)
+  }
+  assignInNamespace(
+    "openrouter_actual_cost",
+    function(cost) {
+      ns$dollars(if (is.numeric(cost) && length(cost) == 1 && is.finite(cost)) as.double(cost) else NA_real_)
+    },
+    "ellmer"
+  )
+  log_info("Patched ellmer's OpenRouter cost for free models (integer cost bug)")
+  TRUE
+}
 
 # HTTP status of a failed request, looking through wrapped (parent) conditions
 http_status <- function(cnd) {

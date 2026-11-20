@@ -1,7 +1,7 @@
 box::use(
   coro[async_generator, await, yield],
-  ellmer[AssistantTurn, ContentText, UserTurn],
-  httr2[local_mocked_responses, req_perform, request, response],
+  ellmer[AssistantTurn, chat_openrouter, ContentText, UserTurn],
+  httr2[local_mocked_responses, req_perform, request, response, response_json],
   later[later],
   promises[promise, promise_resolve],
   rlang[error_cnd],
@@ -12,8 +12,8 @@ box::use(
 
 box::use(
   app / logic / client[
-    error_message, format_stats, idle_stream, new_client, response_stats, response_turns, safe_stream, scan_text,
-    set_reasoning_effort, watch_stream,
+    error_message, fix_openrouter_cost, format_stats, idle_stream, new_client, response_stats, response_turns,
+    safe_stream, scan_text, set_reasoning_effort, watch_stream,
   ],
   app / logic / config[error_messages],
 )
@@ -32,6 +32,27 @@ fake_stream <- async_generator(function(chunks) {
     await(promise_resolve(NULL))
     yield(chunk)
   }
+})
+
+test_that("fix_openrouter_cost() lets a free model's reply with an integer cost of 0 through", {
+  local_envvar(OPENROUTER_API_KEY = "test-key")
+  local_mocked_responses(function(req) {
+    response_json(
+      body = list(
+        id = "gen-1",
+        model = "test/model:free",
+        choices = list(list(index = 0, message = list(role = "assistant", content = "Hi"), finish_reason = "stop")),
+        usage = list(prompt_tokens = 3L, completion_tokens = 1L, total_tokens = 4L, cost = 0L)
+      )
+    )
+  })
+
+  fix_openrouter_cost()
+  client <- chat_openrouter(model = "test/model:free", echo = "none")
+  expect_equal(as.character(client$chat("Hello")), "Hi")
+  expect_equal(unclass(client$last_turn()@cost), 0)
+  # Already patched: nothing left to fix
+  expect_false(fix_openrouter_cost())
 })
 
 test_that("error_message() picks the message for the HTTP status", {
