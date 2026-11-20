@@ -1,4 +1,4 @@
-app = "name-of-your-app"
+app = "your-app-name"
 primary_region = "gru"
 
 [build]

@@ -2,15 +2,18 @@ box::use(
   httr2[local_mocked_responses, response_json],
   later[run_now],
   mirai[daemons],
-  testthat[expect_equal, expect_error, expect_false, expect_match, expect_null, expect_true, test_that],
+  purrr[keep, map_chr],
+  rlang[abort],
+  testthat[expect_equal, expect_error, expect_false, expect_match, expect_no_warning, expect_null, expect_true, test_that],
   withr[defer, local_tempfile],
 )
 
 box::use(
   app / logic / config[source_url, world_bank],
   app / logic / imf[fetch_imf, last_actual_year],
+  app / logic / indicators[is_imf],
   app / logic / wdi[
-    add_imf, download_wdi, load_wdi, read_wdi, record_wdi_progress, split_panel, start_wdi_download,
+    add_imf, download_wdi, fetch_wdi, load_wdi, read_wdi, record_wdi_progress, split_panel, start_wdi_download,
     wdi_downloading, wdi_panel, wdi_progress,
   ],
 )
@@ -145,6 +148,75 @@ test_that("last_actual_year() stops before the edition's forecasts, even early t
   # Without an edition, the year before the current one
   expect_equal(last_actual_year(NULL, today = as.Date("2027-02-01")), 2026L)
   expect_equal(last_actual_year(list(source = "World Economic Outlook"), as.Date("2027-02-01")), 2026L)
+})
+
+test_that("fetch_wdi() leaves an IMF indicator that fails empty and lists it, keeping the rest", {
+  imf_names <- map_chr(keep(world_bank$indicators, is_imf), "name")
+  raw <- fake_wdi_raw()
+  raw[intersect(imf_names, names(raw))] <- NULL
+  fetch_values <- function(code, last_year) {
+    if (code == "GGXWDG_NGDP") {
+      abort("HTTP 404 Not Found.")
+    }
+    data.frame(iso3c = "BRA", year = 2021L, value = 1)
+  }
+
+  panel <- fetch_wdi(
+    fetch_imf_values = fetch_values,
+    fetch_metadata = function() abort("HTTP 404 Not Found."),
+    fetch_raw = function() raw
+  )
+  expect_equal(panel$missing, "gov_debt_pct_gdp")
+  expect_true(all(is.na(panel$countries$gov_debt_pct_gdp)))
+  brazil_2021 <- panel$countries$iso3c == "BRA" & panel$countries$year == 2021
+  expect_equal(panel$countries$gov_balance_pct_gdp[brazil_2021], 1)
+  expect_equal(panel$countries$gdp_usd, split_panel(raw)$countries$gdp_usd)
+})
+
+test_that("fetch_wdi() lists the World Bank indicators WDI dropped, without passing on its warning", {
+  raw <- fake_wdi_raw()
+  raw$gini <- NULL
+  # What WDI() does when some indicators fail: warn and leave their columns out
+  fetch_raw <- function() {
+    warning("Unable to download indicators SI.POV.GINI")
+    raw
+  }
+
+  expect_no_warning(
+    panel <- fetch_wdi(
+      fetch_imf_values = function(code, last_year) data.frame(iso3c = "BRA", year = 2021L, value = 1),
+      fetch_metadata = function() list(),
+      fetch_raw = fetch_raw
+    )
+  )
+  expect_equal(panel$missing, "gini")
+  expect_true(all(is.na(panel$countries$gini)))
+  expect_equal(panel$countries$gdp_usd, split_panel(raw)$countries$gdp_usd)
+})
+
+test_that("a cache with indicators that failed to download is retried sooner", {
+  path <- local_tempfile(fileext = ".rds")
+  calls <- 0
+  fetch <- function() {
+    calls <<- calls + 1
+    split_panel(fake_wdi_raw())
+  }
+  saved <- split_panel(fake_wdi_raw())
+  saveRDS(saved, path)
+  hours_old <- function(hours) Sys.setFileTime(path, Sys.time() - hours * 60 * 60)
+
+  hours_old(world_bank$retry_hours + 1)
+  load_wdi(fetch = fetch, path = path, max_age_days = 7)
+  expect_equal(calls, 0)
+
+  saved$missing <- "gov_debt_pct_gdp"
+  saveRDS(saved, path)
+  hours_old(world_bank$retry_hours - 1)
+  load_wdi(fetch = fetch, path = path, max_age_days = 7)
+  expect_equal(calls, 0)
+  hours_old(world_bank$retry_hours + 1)
+  load_wdi(fetch = fetch, path = path, max_age_days = 7)
+  expect_equal(calls, 1)
 })
 
 test_that("load_wdi() falls back to a stale file when the download fails, and errors without one", {

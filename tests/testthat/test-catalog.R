@@ -1,7 +1,7 @@
 box::use(
   htmltools[htmlEscape],
-  purrr[map_chr],
-  stringr[fixed, str_c, str_count, str_detect, str_starts, str_trim],
+  purrr[detect, map_chr],
+  stringr[fixed, str_c, str_count, str_detect, str_extract, str_starts, str_trim],
   testthat[expect_equal, expect_false, expect_true, test_that],
 )
 
@@ -10,6 +10,9 @@ box::use(
   app / logic / config[world_bank],
   app / logic / indicators[indicator_source],
 )
+
+# The configured warning's text before its {indicators} list
+missing_warning <- str_extract(world_bank$missing_data, "^[^{]+")
 
 suggestion <- function(text) str_c('<span class="suggestion">', text, "</span>")
 
@@ -67,6 +70,16 @@ test_that("catalog text can't break the Markdown table or inject HTML", {
 })
 
 test_that("Agent mode's greeting is the configured text followed by the catalog", {
-  expect_true(str_starts(world_bank_greeting, fixed(str_trim(world_bank$greeting))))
-  expect_true(str_detect(world_bank_greeting, fixed(catalog_markdown())))
+  greeting <- world_bank_greeting()
+  expect_true(str_starts(greeting, fixed(str_trim(world_bank$greeting))))
+  expect_true(str_detect(greeting, fixed(catalog_markdown())))
+  expect_false(str_detect(greeting, fixed(missing_warning)))
+})
+
+test_that("Agent mode's greeting names the indicators that failed to download", {
+  greeting <- world_bank_greeting(c("gov_debt_pct_gdp", "household_debt_pct_gdp"))
+  debt <- detect(world_bank$indicators, \(i) i$name == "gov_debt_pct_gdp")
+  expect_true(str_detect(greeting, fixed(missing_warning)))
+  expect_true(str_detect(greeting, fixed(htmlEscape(debt$description))))
+  expect_true(str_detect(greeting, fixed(catalog_markdown())))
 })

@@ -399,7 +399,7 @@ server <- function(
     show_efforts(model)
     # Each mode's greeting (World Bank data mode's is a catalog of clickable example questions)
     chat$clear()
-    chat$set_greeting(if (on) world_bank_greeting else greeting)
+    chat$set_greeting(if (on) world_bank_greeting(panel$missing) else greeting)
     stats(NULL)
     log_info("Switched to {if (on) 'World Bank data' else 'chat'} mode with model {model}")
   }

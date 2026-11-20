@@ -12,6 +12,7 @@ box::use(
 
 box::use(
   app / logic / checks[check_api_key, check_model],
+  app / logic / client[fix_openrouter_cost],
   app / logic / agent[prewarm_agent],
   app / logic / config[fallback_model, response_timeout_seconds, world_bank],
   app / logic / models[free_models, reasoning_options],
@@ -30,6 +31,9 @@ check_api_key()
 # Safety limit on any model request (ellmer reads it as each request is built); stalls are caught
 # much sooner by watch_stream() (app/logic/client.R)
 options(ellmer_timeout_s = response_timeout_seconds)
+
+# Until ellmer fixes it, every free model's reply fails on OpenRouter's integer `"cost": 0`
+fix_openrouter_cost()
 
 options(commons.context_cache = world_bank$context_cache)
 

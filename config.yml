@@ -137,6 +137,9 @@ default:
       group_example: "Which Mercosur countries grew most since 2020?"
       sources_heading: "Data sources"
     unavailable: "Agent mode isn't available right now because its data couldn't be loaded. Please try again later."
+    # Under the greeting when some indicators failed to download (e.g. the IMF API was down): the
+    # rest of the data still works. {indicators} lists their descriptions.
+    missing_data: "**Some data couldn't be downloaded:** {indicators}. Questions about these indicators can't be answered right now; the app will try again later."
     busy: "Please wait for the current response to finish before switching mode."
     # Above a progress bar in every session while the data downloads (e.g. the first start); `loading`
     # replaces it once Agent mode is picked, which then turns on by itself (picking Chat cancels that)
@@ -340,6 +343,9 @@ default:
     # cache_days (an older copy is still used if a new download fails)
     cache_file: "cache/wdi.rds"
     cache_days: 7
+    # An indicator that fails to download (World Bank or IMF) is left empty and the download still
+    # succeeds; a cache with empty ones is downloaded again after this many hours instead of cache_days
+    retry_hours: 6
     # commons' context search index (data dictionary, notes, definitions), built at startup and kept
     # here; rebuilt only when their text changes
     context_cache: "cache/commons"
