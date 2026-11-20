@@ -1,7 +1,7 @@
 box::use(
   glue[glue],
   htmltools[htmlEscape],
-  purrr[map_chr],
+  purrr[keep, map_chr],
   stringr[fixed, str_c, str_flatten, str_flatten_comma, str_replace_all, str_trim],
 )
 
@@ -61,6 +61,13 @@ catalog_markdown <- function(
   )
 }
 
-#' Greeting of Agent mode: the configured text followed by the catalog
+#' Greeting of Agent mode: the configured text, a warning naming the `missing` indicators (names that
+#' failed to download), if any, then the catalog
 #' @export
-world_bank_greeting <- str_c(str_trim(world_bank$greeting), "\n\n", catalog_markdown())
+world_bank_greeting <- function(missing = character()) {
+  described <- keep(world_bank$indicators, \(i) i$name %in% missing)
+  warning <- if (length(described) > 0) {
+    glue(world_bank$missing_data, indicators = htmlEscape(str_flatten_comma(map_chr(described, "description"))))
+  }
+  str_flatten(c(str_trim(world_bank$greeting), warning, catalog_markdown()), "\n\n")
+}
