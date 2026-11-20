@@ -2,7 +2,7 @@ box::use(
   cachem[cache_mem],
   checkmate[test_file_exists, test_null, test_subset],
   dplyr[across, all_of, arrange, everything, filter, mutate, rename, rows_update, select],
-  logger[log_info, log_warn],
+  logger[log_error, log_info, log_warn],
   memoise[forget, memoise],
   mirai[mirai, unresolved],
   promises[then],
@@ -75,17 +75,21 @@ add_imf <- function(panel, name, values) {
 }
 
 #' Download every indicator, uncached (~30 s): World Bank ones with WDI, IMF ones up to their last
-#' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works.
+#' actual year (last_actual_year()), with definitions from `fetch_metadata` when it works. An IMF
+#' indicator that fails stays empty and is listed in `missing`; only a World Bank failure is an error.
 #' `progress(done, total)` is called as each part (World Bank, IMF definitions, each IMF indicator) ends.
 #' @export
 fetch_wdi <- function(
   fetch_imf_values = fetch_imf,
   fetch_metadata = fetch_imf_metadata,
-  progress = function(done, total) NULL
+  progress = function(done, total) NULL,
+  fetch_raw = function() {
+    WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
+  }
 ) {
   total <- 2 + length(imf_indicators)
   progress(0, total)
-  raw <- WDI(country = "all", indicator = indicator_codes, start = world_bank$start_year, end = NULL, extra = TRUE)
+  raw <- fetch_raw()
   if (!is.data.frame(raw) || nrow(raw) == 0) {
     abort("The World Bank returned no data.")
   }
@@ -96,9 +100,21 @@ fetch_wdi <- function(
   })
   progress(2, total)
   panel <- split_panel(raw)
+  panel$missing <- character()
   for (k in seq_along(imf_indicators)) {
     i <- imf_indicators[[k]]
-    panel <- add_imf(panel, i$name, fetch_imf_values(i$code, last_year = last_actual_year(imf_metadata[[i$code]])))
+    values <- tryCatch(
+      fetch_imf_values(i$code, last_year = last_actual_year(imf_metadata[[i$code]])),
+      error = function(cnd) {
+        log_error("Could not download the IMF indicator {i$code} ({i$name}): {conditionMessage(cnd)}")
+        NULL
+      }
+    )
+    if (test_null(values)) {
+      panel$missing <- c(panel$missing, i$name)
+    } else {
+      panel <- add_imf(panel, i$name, values)
+    }
     progress(2 + k, total)
   }
   panel$definitions <- indicator_definitions(imf_metadata)
@@ -117,8 +133,16 @@ matches_config <- function(panel) {
     !test_null(panel$definitions)
 }
 
+# A cache with indicators that failed to download (`missing`) is retried after `world_bank$imf$retry_hours`
 is_fresh <- function(path, max_age_days) {
-  test_file_exists(path) && file_age_days(path) < max_age_days && matches_config(readRDS(path))
+  if (!test_file_exists(path)) {
+    return(FALSE)
+  }
+  panel <- readRDS(path)
+  if (length(panel$missing) > 0) {
+    max_age_days <- min(max_age_days, world_bank$imf$retry_hours / 24)
+  }
+  file_age_days(path) < max_age_days && matches_config(panel)
 }
 
 # The background download started by start_wdi_download(), if any (one per R process)
